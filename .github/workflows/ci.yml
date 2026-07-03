@@ -6,22 +6,9 @@ on:
 
 jobs:
   shellcheck:
-    name: shellcheck
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-
-      # Scripts are extensionless (parameters/entrypoint, utils/*, providers/*/*),
-      # so the shared reusable's old `find -name '*.sh'` matched nothing here.
-      # actions-nullplatform#81 teaches the reusable to discover extensionless
-      # scripts by shebang; once it merges, replace this job with:
-      #   uses: nullplatform/actions-nullplatform/.github/workflows/shellcheck.yml@main
-      - name: Run ShellCheck
-        run: |
-          find parameters -type f \( ! -name '*.*' -o -name '*.sh' \) \
-            -not -path '*/.git/*' -not -path '*/.terraform/*' -print0 \
-            | xargs -0 grep -lE '^#!.*sh' \
-            | xargs -r shellcheck --severity=error --shell=bash -x
+    # Shared reusable auto-discovers extensionless scripts by shebang
+    # (nullplatform/actions-nullplatform#81).
+    uses: nullplatform/actions-nullplatform/.github/workflows/shellcheck.yml@main
 
   trivy-iac:
     name: Trivy IaC Scan
