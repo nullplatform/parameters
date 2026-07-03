@@ -1,0 +1,89 @@
+#!/bin/bash
+
+# Constructs EXTERNAL_ID for a store operation by composing:
+#   <entity_type>=<slug>-<id>/.../<dim_key>=<dim_value>/<parameter_name>-<parameter_id>
+#
+# The path is human-friendly: anyone entering the storage layer manually (AWS
+# console, Vault UI, az portal) sees the entity hierarchy, the dimensions, and
+# the parameter name + id directly in the path.
+#
+# Slugs are fetched in parallel via `np <type> read --id <id> --format json --query '.slug'`.
+# Entities are iterated in canonical NRN order; only present entities are included.
+# Dimensions are sorted alphabetically by key for determinism.
+#
+# Slugs in nullplatform are immutable (contract guarantee), so the resulting
+# EXTERNAL_ID is stable for the lifetime of the parameter.
+#
+# Requires: np CLI in PATH, jq, mktemp
+# Reads: CONTEXT (set by entrypoint), log function in scope
+# Exports: EXTERNAL_ID (slash-separated canonical form)
+#
+# Each provider's store decides how to use EXTERNAL_ID:
+#   - vault/SM/PS: append to a prefix that ends with `/`
+#   - AKV: replace `/` and `=` with `-` (AKV doesn't allow those chars)
+
+# Replaces characters not allowed by AWS SM / Parameter Store secret names.
+# AWS SM allows alphanumerics and /_+=.@- ; everything else becomes underscore.
+sanitize_for_path() {
+  echo "$1" | sed 's|[^A-Za-z0-9._-]|_|g'
+}
+
+build_external_id() {
+  # value_entities is the scope-level shape (carries the scope segment).
+  # entities is the app/dimension-level shape (no scope). Falling back to {}
+  # only matters for tests; in production at least one is always present.
+  local entities_json
+  entities_json=$(echo "$CONTEXT" | jq -c '.value_entities // .entities // {}')
+
+  local entity_order=("organization" "account" "namespace" "application" "scope")
+  local segments=()
+
+  for entity_type in "${entity_order[@]}"; do
+    local entity_id
+    entity_id=$(echo "$entities_json" | jq -r ".$entity_type // empty")
+    [ -z "$entity_id" ] && continue
+
+    # Entity slugs are pre-fetched by utils/prefetch_np into the cache. No
+    # np call here — just read the JSON record and pull .slug.
+    local entity_file="${NP_CACHE_DIR:-}/$entity_type.json"
+    if [ ! -s "$entity_file" ]; then
+      log error "❌ Missing pre-fetched record for $entity_type=$entity_id"
+      log error ""
+      log error "💡 Possible causes:"
+      log error "   • Entity does not exist in nullplatform"
+      log error "   • np CLI is not authenticated"
+      log error "   • utils/prefetch_np was not sourced before build_external_id"
+      log error ""
+      log error "🔧 How to fix:"
+      log error "   • Verify: np $entity_type read --id $entity_id --format json"
+      [ -s "${NP_CACHE_DIR:-}/$entity_type.err" ] && \
+        log error "   • Underlying error: $(cat "${NP_CACHE_DIR}/$entity_type.err")"
+      exit 1
+    fi
+
+    local slug
+    slug=$(jq -r '.slug // empty' < "$entity_file")
+    if [ -z "$slug" ]; then
+      log error "❌ Pre-fetched $entity_type record has no .slug (id=$entity_id)"
+      exit 1
+    fi
+    segments+=("$entity_type=${slug}-${entity_id}")
+  done
+
+  while IFS= read -r dim; do
+    [ -n "$dim" ] && segments+=("$dim")
+  done < <(echo "$CONTEXT" | jq -r '(.dimensions // {}) | to_entries | sort_by(.key) | .[] | "\(.key)=\(.value)"')
+
+  local param_id param_name
+  param_id=$(echo "$CONTEXT" | jq -r '.parameter_id // empty')
+  param_name=$(echo "$CONTEXT" | jq -r '.parameter_name // empty')
+  if [ -n "$param_name" ] && [ -n "$param_id" ]; then
+    segments+=("$(sanitize_for_path "$param_name")-$param_id")
+  elif [ -n "$param_id" ]; then
+    segments+=("$param_id")
+  fi
+
+  local IFS=/
+  EXTERNAL_ID="${segments[*]}"
+  export EXTERNAL_ID
+}

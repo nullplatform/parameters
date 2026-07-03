@@ -132,3 +132,26 @@ dist
 # Intellij
 
 .idea
+
+# Claude
+.claude
+
+# Per-instance env files
+*.env
+
+# Terraform / Tofu
+terraform.tfstate
+terraform.tfstate.backup
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+*.tfvars.json
+*.tfbackend
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+backend-local.tf
+.terraform/
+.terraform.tfstate.lock.info
