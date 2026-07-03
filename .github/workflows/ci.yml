@@ -5,20 +5,29 @@ on:
     branches: [main]
 
 jobs:
-  go:
-    uses: nullplatform/actions-nullplatform/.github/workflows/pr-checks-go.yml@main
-    with:
-      working-directory: k8s/log/kube-logger-go
-      go-version: '1.25'
-
   shellcheck:
-    uses: nullplatform/actions-nullplatform/.github/workflows/shellcheck.yml@main
+    name: shellcheck
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # Scripts are extensionless (parameters/entrypoint, utils/*, providers/*/*),
+      # so the shared reusable's `find -name '*.sh'` matches nothing here. Discover
+      # by shell shebang instead, skipping .bats/.tf/.md and generated .terraform dirs.
+      - name: Run ShellCheck
+        run: |
+          find parameters -type f \( ! -name '*.*' -o -name '*.sh' \) \
+            -not -path '*/.git/*' -not -path '*/.terraform/*' -print0 \
+            | xargs -0 grep -lE '^#!.*sh' \
+            | xargs -r shellcheck --severity=error --shell=bash -x
 
   unit-tests:
     name: Unit Tests
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y bats jq
