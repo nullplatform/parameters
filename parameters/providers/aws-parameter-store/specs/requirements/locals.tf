@@ -43,7 +43,7 @@ locals {
   policy_doc = var.iam_role.mode == "kms" ? jsonencode({
     Version   = "2012-10-17"
     Statement = [local.base_policy_statement, local.kms_policy_statement]
-  }) : jsonencode({
+    }) : jsonencode({
     Version   = "2012-10-17"
     Statement = [local.base_policy_statement]
   })
