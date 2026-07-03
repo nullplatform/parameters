@@ -1,28 +1,43 @@
-name: ci-nullplatform
-env:
-  NULLPLATFORM_API_KEY: ${{ secrets.NULLPLATFORM_API_KEY }}
+name: PR Checks
+
 on:
-  push:
-    branches:
-      - main
-permissions:
-  id-token: write
-  contents: read
-  packages: read
+  pull_request:
+    branches: [main]
+
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  shellcheck:
+    name: shellcheck
+    runs-on: ubuntu-24.04
     steps:
-      - name: Install nullplatform cli
-        run: curl https://cli.nullplatform.com/install.sh | sh
-      - name: Checkout code
-        uses: actions/checkout@v4
-      - name: Start nullplatform CI
-        run: np build start
-      - name: Build asset
-        run: docker build -t main .
-      - name: Push asset
-        run: np asset push --type docker-image --source main
-      - name: End nullplatform CI
-        if: ${{ always() }}
-        run: np build update --status ${{ contains(fromJSON('["failure", "cancelled"]'), job.status) && 'failed' || 'successful' }}
+      - uses: actions/checkout@v4
+
+      # Scripts are extensionless (parameters/entrypoint, utils/*, providers/*/*),
+      # so the shared reusable's `find -name '*.sh'` matches nothing here. Discover
+      # by shell shebang instead, skipping .bats/.tf/.md and generated .terraform dirs.
+      - name: Run ShellCheck
+        run: |
+          find parameters -type f \( ! -name '*.*' -o -name '*.sh' \) \
+            -not -path '*/.git/*' -not -path '*/.terraform/*' -print0 \
+            | xargs -0 grep -lE '^#!.*sh' \
+            | xargs -r shellcheck --severity=error --shell=bash -x
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y bats jq
+
+      - name: Install gomplate
+        run: |
+          sudo curl -fsSL -o /usr/local/bin/gomplate \
+            https://github.com/hairyhenderson/gomplate/releases/download/v4.3.3/gomplate_linux-amd64
+          sudo chmod +x /usr/local/bin/gomplate
+          gomplate --version
+
+      - name: Run unit tests
+        run: make test-unit
