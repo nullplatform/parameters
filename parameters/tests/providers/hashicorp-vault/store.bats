@@ -1,0 +1,126 @@
+#!/usr/bin/env bats
+# =============================================================================
+# Unit tests for parameters/providers/hashicorp-vault/store
+# external_id is now composed via parameters/utils/build_external_id.
+# =============================================================================
+
+setup() {
+  export PROJECT_ROOT="$(cd "$BATS_TEST_DIRNAME/../../../.." && pwd)"
+  export PARAMETERS_DIR="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
+  export PARAMETERS_ROOT="$PARAMETERS_DIR"
+
+  source "$PROJECT_ROOT/testing/assertions.sh"
+
+  export SCRIPT="$PARAMETERS_DIR/providers/hashicorp-vault/store"
+
+  mkdir -p "$BATS_TEST_TMPDIR/bin"
+
+  # Pre-populate the np cache that utils/prefetch_np would normally produce.
+  export NP_CACHE_DIR="$BATS_TEST_TMPDIR/np-cache"
+  mkdir -p "$NP_CACHE_DIR"
+  echo '{"slug":"acme"}'    > "$NP_CACHE_DIR/organization.json"
+  echo '{"slug":"prod"}'    > "$NP_CACHE_DIR/account.json"
+  echo '{"slug":"billing"}' > "$NP_CACHE_DIR/namespace.json"
+  echo '{"slug":"api"}'     > "$NP_CACHE_DIR/application.json"
+  echo '{"slug":"main"}'    > "$NP_CACHE_DIR/scope.json"
+
+  # Mock curl
+  export CURL_LOG="$BATS_TEST_TMPDIR/curl.log"
+  cat > "$BATS_TEST_TMPDIR/bin/curl" << EOF
+#!/bin/bash
+echo "ARGS: \$@" >> "$CURL_LOG"
+if [ "\${MOCK_CURL_EXIT:-0}" -ne 0 ]; then exit \$MOCK_CURL_EXIT; fi
+# Vault KV v2 returns the new version number in response body
+echo '{"data":{"created_time":"2026-06-23T00:00:00Z","version":3,"deletion_time":"","destroyed":false}}'
+EOF
+  chmod +x "$BATS_TEST_TMPDIR/bin/curl"
+
+  export PATH="$BATS_TEST_TMPDIR/bin:$PATH"
+
+  export VAULT_ADDR="https://vault.example.com"
+  export VAULT_TOKEN="hvs.test-token"
+  export VAULT_PATH_PREFIX="secret/data/nullplatform"
+  export PARAMETER_ID=42
+  export PARAMETER_VALUE="my-secret"
+  export CONTEXT='{
+    "parameter_id": 42,
+    "value": "my-secret",
+    "entities": {
+      "organization": "1255165411",
+      "account": "95118862",
+      "namespace": "37094320",
+      "application": "321402625"
+    },
+    "dimensions": {}
+  }'
+
+  export DEPS="source $PARAMETERS_DIR/utils/log"
+}
+
+@test "vault store: external_id composed from entities + parameter_id + version" {
+  run bash -c "$DEPS; source $SCRIPT"
+
+  assert_equal "$status" "0"
+  external_id=$(echo "$output" | jq -r '.external_id')
+  # Mock returns .data.version=3
+  expected="organization=acme-1255165411/account=prod-95118862/namespace=billing-37094320/application=api-321402625/42#3"
+  assert_equal "$external_id" "$expected"
+}
+
+@test "vault store: external_id includes sorted dimensions" {
+  export CONTEXT=$(echo "$CONTEXT" | jq '.dimensions = {environment: "prod", country: "arg"}')
+
+  run bash -c "$DEPS; source $SCRIPT"
+
+  assert_equal "$status" "0"
+  external_id=$(echo "$output" | jq -r '.external_id')
+  # Dimensions sorted alphabetically: country before environment
+  assert_contains "$external_id" "country=arg/environment=prod/42"
+}
+
+@test "vault store: vault_path contains external_id" {
+  run bash -c "$DEPS; source $SCRIPT"
+
+  assert_equal "$status" "0"
+  vault_path=$(echo "$output" | jq -r '.metadata.vault_path')
+  assert_contains "$vault_path" "secret/data/nullplatform/organization=acme-1255165411"
+  assert_contains "$vault_path" "/42"
+}
+
+@test "vault store: POSTs to Vault URL with token" {
+  run bash -c "$DEPS; source $SCRIPT"
+
+  captured=$(cat "$CURL_LOG")
+  assert_contains "$captured" "-X POST"
+  assert_contains "$captured" "-H X-Vault-Token: hvs.test-token"
+  assert_contains "$captured" "https://vault.example.com/v1/secret/data/nullplatform/organization=acme-1255165411"
+}
+
+@test "vault store: POST body contains parameter_id, value, external_id, stored_at" {
+  run bash -c "$DEPS; source $SCRIPT"
+
+  captured=$(cat "$CURL_LOG")
+  assert_contains "$captured" '"parameter_id":42'
+  assert_contains "$captured" '"value":"my-secret"'
+  assert_contains "$captured" '"external_id":"organization=acme-1255165411'
+  assert_contains "$captured" '"stored_at":"'
+}
+
+@test "vault store: fails with troubleshooting when curl returns non-zero" {
+  run bash -c "$DEPS; MOCK_CURL_EXIT=22 source $SCRIPT"
+
+  [ "$status" -ne 0 ]
+  assert_contains "$output" "❌ Failed to store parameter in Vault"
+  assert_contains "$output" "💡 Possible causes:"
+}
+
+@test "vault store: works without dimensions" {
+  export CONTEXT=$(echo "$CONTEXT" | jq 'del(.dimensions)')
+
+  run bash -c "$DEPS; source $SCRIPT"
+
+  assert_equal "$status" "0"
+  external_id=$(echo "$output" | jq -r '.external_id')
+  expected="organization=acme-1255165411/account=prod-95118862/namespace=billing-37094320/application=api-321402625/42#3"
+  assert_equal "$external_id" "$expected"
+}
