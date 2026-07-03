@@ -1,0 +1,54 @@
+#!/bin/bash
+set -euo pipefail
+
+# Retrieves a secret from Azure Key Vault by external_id.
+#
+# Required env: EXTERNAL_ID (canonical slash form), AZ_VAULT_NAME, AZ_SECRET_PREFIX
+
+# EXTERNAL_ID_PATH and EXTERNAL_ID_VERSION are set by build_context.
+# AKV stores with dashes (no `/` or `=`); transform from canonical path.
+AKV_SUFFIX=$(echo "$EXTERNAL_ID_PATH" | tr '/=' '--')
+SECRET_NAME="${AZ_SECRET_PREFIX}${AKV_SUFFIX}"
+
+show_args=(
+  --vault-name "$AZ_VAULT_NAME"
+  --name "$SECRET_NAME"
+  --query value
+  --output tsv
+)
+[ -n "${EXTERNAL_ID_VERSION:-}" ] && show_args+=(--version "$EXTERNAL_ID_VERSION")
+
+err_file=$(mktemp)
+if VALUE=$(az keyvault secret show "${show_args[@]}" 2>"$err_file"); then
+  rm -f "$err_file"
+  jq -n --arg value "$VALUE" '{value: $value}'
+else
+  err=$(cat "$err_file")
+  rm -f "$err_file"
+  if echo "$err" | grep -qE "(SecretNotFound|secret with .* was not found)"; then
+    log error "❌ Secret '$SECRET_NAME' not found in Azure Key Vault '$AZ_VAULT_NAME'"
+    log error ""
+    log error "💡 Possible causes:"
+    log error "   • The secret was manually deleted (and possibly purged) from AKV"
+    log error "   • The external_id is stale"
+    if [ -n "${EXTERNAL_ID_VERSION:-}" ]; then
+      log error "   • Requested version '$EXTERNAL_ID_VERSION' was purged from AKV"
+    fi
+    log error ""
+    log error "🔧 How to fix:"
+    log error "   • Verify: az keyvault secret show --vault-name $AZ_VAULT_NAME --name $SECRET_NAME"
+    log error "   • If genuinely missing, the parameter value needs to be re-stored"
+    exit 1
+  else
+    log error "❌ Failed to retrieve secret '$SECRET_NAME' from Azure Key Vault '$AZ_VAULT_NAME'"
+    log error ""
+    log error "💡 Possible causes:"
+    log error "   • Identity lacks 'Get' permission on vault $AZ_VAULT_NAME"
+    log error "   • Vault firewall blocks the caller"
+    log error ""
+    log error "🔧 How to fix:"
+    log error "   • Verify identity: az account show"
+    log error "Underlying error: $err"
+    exit 1
+  fi
+fi

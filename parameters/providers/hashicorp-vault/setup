@@ -1,0 +1,41 @@
+#!/bin/bash
+set -euo pipefail
+
+# Validates HashiCorp Vault connection config.
+#
+# The KV path prefix is hardcoded to `secret/data/nullplatform` — invariant
+# namespace for all platform secrets. VAULT_ADDR is operator-configurable
+# (per Vault instance). VAULT_TOKEN is sensitive and should come from env only.
+#
+# Exports: VAULT_ADDR, VAULT_TOKEN, VAULT_PATH_PREFIX
+
+VAULT_ADDR=$(get_config_value --env VAULT_ADDR --provider '.setup.address')
+VAULT_TOKEN=$(get_config_value --env VAULT_TOKEN)
+VAULT_PATH_PREFIX="secret/data/nullplatform"
+
+if [ -z "$VAULT_ADDR" ]; then
+  log error "❌ Vault address not configured"
+  log error ""
+  log error "💡 Possible causes:"
+  log error "   • VAULT_ADDR env var is not set in the workflow runtime"
+  log error "   • .address is missing in the hashicorp-vault provider config"
+  log error ""
+  log error "🔧 How to fix:"
+  log error "   • Set VAULT_ADDR=https://your-vault-host"
+  log error "   • Or set .address in the provider config attributes"
+  exit 1
+fi
+
+if [ -z "$VAULT_TOKEN" ]; then
+  log error "❌ Vault token not configured"
+  log error ""
+  log error "💡 Possible causes:"
+  log error "   • VAULT_TOKEN env var is not set in the agent runtime"
+  log error ""
+  log error "🔧 How to fix:"
+  log error "   • Set VAULT_TOKEN=<your-token> in the agent environment"
+  log error "   • Tokens are sensitive — set via env, never via provider config"
+  exit 1
+fi
+
+export VAULT_ADDR VAULT_TOKEN VAULT_PATH_PREFIX
