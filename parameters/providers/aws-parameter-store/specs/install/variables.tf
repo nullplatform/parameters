@@ -30,7 +30,7 @@ variable "repository_parameter_storage_spec_branch" {
 variable "repository_parameter_storage_spec" {
   description = "Base raw URL of the parameters repository hosting the parameter storage spec."
   type        = string
-  default     = "https://raw.githubusercontent.com/nullplatform/parameters/refs/heads"
+  default     = "https://raw.githubusercontent.com/nullplatform/parameters-provider/refs/heads"
 }
 
 variable "instances" {
