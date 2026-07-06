@@ -140,6 +140,7 @@ dist
 *.env
 
 # Terraform / Tofu
+.terraform.lock.hcl
 terraform.tfstate
 terraform.tfstate.backup
 *.tfstate

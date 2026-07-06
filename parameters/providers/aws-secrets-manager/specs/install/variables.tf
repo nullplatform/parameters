@@ -15,24 +15,50 @@ variable "extra_visible_to_nrns" {
   default     = []
 }
 
+variable "template_path" {
+  description = "Path to the provider specification configuration template used by the parameter_storage_definition module."
+  type        = string
+  default     = "parameters/providers/aws-secrets-manager/specs/install/aws-secrets-manager-configuration.json.tpl"
+}
+
+variable "repository_parameter_storage_spec_branch" {
+  description = "Branch of the parameters repository from which the parameter storage spec is fetched."
+  type        = string
+  default     = "main"
+}
+
+variable "repository_parameter_storage_spec" {
+  description = "Base raw URL of the parameters repository hosting the parameter storage spec."
+  type        = string
+  default     = "https://raw.githubusercontent.com/nullplatform/parameters-provider/refs/heads"
+}
+
 variable "instances" {
   description = <<-EOT
     Provider instances to create. Map key is a stable identifier (used in for_each).
-    Each entry carries its own NRN, dimensions, KMS key, and the parameter sensibility
-    set this instance handles (secret / non_secret / both).
-    Each instance also gets its own agent API key + notification channel (anchored at the
-    instance NRN) unless notification_channel_enabled=false. Fields:
-      notification_channel_enabled — create the agent channel + its API key for this instance (default true).
-      tags_selectors               — tag key/value pairs the agent uses to match this instance's channel
-                                      against scope tags (e.g. { environment = "development" }).
+    Each entry carries its own NRN, dimensions, and a provider-specific `attributes`
+    object that each caller shapes to match its provider specification schema (e.g.
+    Parameter Store sends setup.tier, Secrets Manager omits it).
+    Instances with enable_notification_channel=true also get their own agent API key + notification
+    channel (anchored at the instance NRN). Fields:
+      attributes                  — provider-specific config matching the provider spec schema (opaque here).
+      enable_notification_channel — create the agent API key + notification channel for this instance (default false).
+      tags_selectors              — tags the agent uses to select/filter this channel against scope tags
+                                    (e.g. { environment = "production" }); default {}.
   EOT
   type = map(object({
-    nrn                          = string
-    dimensions                   = map(string)
-    kms_key_id                   = string
-    applies_to                   = list(string)
-    notification_channel_enabled = optional(bool, true)
-    tags_selectors               = optional(map(string), {})
+    nrn                         = string
+    dimensions                  = map(string)
+    enable_notification_channel = optional(bool, false)
+    tags_selectors              = optional(map(string), {})
+    attributes = object({
+      sensibility = object({
+        applies_to = list(string)
+      })
+      setup = object({
+        kms_key_id = string
+      })
+    })
   }))
   default = {}
 }
