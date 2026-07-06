@@ -5,7 +5,7 @@
   "category": "parameters-storage",
   "icon": "mdi:aws",
   "visible_to": [
-    "{{ env.Getenv \"NRN\" }}"
+    "{{ env.Getenv "NRN" }}"
   ],
   "allow_dimensions": true,
   "schema": {
