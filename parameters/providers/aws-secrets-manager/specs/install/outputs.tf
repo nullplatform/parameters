@@ -2,7 +2,7 @@ output "storage_configuration" {
   description = "Provider specification ID and the per-instance provider configs (id, nrn, dimensions), keyed by instance key."
   value = {
     specification_id = module.secrets_manager_spec.specification_id
-    slug = module.secrets_manager_spec.slug
+    slug             = module.secrets_manager_spec.slug
     instances = {
       for key, instance in var.instances : key => {
         id         = module.secrets_manager_configuration[key].provider_config_id

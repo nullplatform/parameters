@@ -24,11 +24,11 @@ module "secrets_manager_configuration" {
 
   for_each = var.instances
 
-  nrn                          = each.value.nrn
-  np_api_key                   = var.np_api_key
-  provider_specification_slug  = module.secrets_manager_spec.slug
-  dimensions                   = each.value.dimensions
-  attributes                   = each.value.attributes
+  nrn                         = each.value.nrn
+  np_api_key                  = var.np_api_key
+  provider_specification_slug = module.secrets_manager_spec.slug
+  dimensions                  = each.value.dimensions
+  attributes                  = each.value.attributes
 
   depends_on = [module.secrets_manager_spec]
 }
