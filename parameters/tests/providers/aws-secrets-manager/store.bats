@@ -22,17 +22,6 @@ setup() {
 
   mkdir -p "$BATS_TEST_TMPDIR/bin"
 
-  # Pre-populate the np cache that utils/prefetch_np would normally produce.
-  # The store path uses utils/build_external_id which reads <entity>.json from
-  # this cache instead of calling np.
-  export NP_CACHE_DIR="$BATS_TEST_TMPDIR/np-cache"
-  mkdir -p "$NP_CACHE_DIR"
-  echo '{"slug":"acme"}'    > "$NP_CACHE_DIR/organization.json"
-  echo '{"slug":"prod"}'    > "$NP_CACHE_DIR/account.json"
-  echo '{"slug":"billing"}' > "$NP_CACHE_DIR/namespace.json"
-  echo '{"slug":"api"}'     > "$NP_CACHE_DIR/application.json"
-  echo '{"slug":"staging"}' > "$NP_CACHE_DIR/scope.json"
-
   export AWS_LOG="$BATS_TEST_TMPDIR/aws.log"
   cat > "$BATS_TEST_TMPDIR/bin/aws" << 'EOF'
 #!/bin/bash
@@ -77,15 +66,21 @@ EOF
   export SM_KMS_KEY_ID=""
   export PARAMETER_ID=42
   export PARAMETER_VALUE="my-secret"
+  # Slugs travel in the payload next to each entity id (build_external_id reads
+  # them straight from CONTEXT — no np call, no cache files).
   export CONTEXT='{
     "parameter_id": 42,
     "parameter_name": "DB_PASSWORD",
     "value": "my-secret",
     "entities": {
       "organization": "1255165411",
+      "organization_slug": "acme",
       "account": "95118862",
+      "account_slug": "prod",
       "namespace": "37094320",
-      "application": "321402625"
+      "namespace_slug": "billing",
+      "application": "321402625",
+      "application_slug": "api"
     },
     "dimensions": {}
   }'
@@ -111,16 +106,25 @@ EOF
     "value": "my-secret",
     "entities": {
       "organization": "1255165411",
+      "organization_slug": "acme",
       "account": "95118862",
+      "account_slug": "prod",
       "namespace": "37094320",
-      "application": "321402625"
+      "namespace_slug": "billing",
+      "application": "321402625",
+      "application_slug": "api"
     },
     "value_entities": {
       "organization": "1255165411",
+      "organization_slug": "acme",
       "account": "95118862",
+      "account_slug": "prod",
       "namespace": "37094320",
+      "namespace_slug": "billing",
       "application": "321402625",
-      "scope": "601620319"
+      "application_slug": "api",
+      "scope": "601620319",
+      "scope_slug": "staging"
     }
   }'
 

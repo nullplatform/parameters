@@ -71,11 +71,6 @@ if [ -z "$ACTIVE_PROVIDER" ]; then
   exit 1
 fi
 
-# Pre-fetch every `np` read this workflow needs, in parallel. Downstream
-# (assume_role_step, build_external_id) reads from $NP_CACHE_DIR instead of
-# re-invoking np.
-source "$SCRIPT_DIR/prefetch_np"
-
 PROVIDER_DIR="$PARAMETERS_ROOT/providers/$ACTIVE_PROVIDER"
 if [ ! -d "$PROVIDER_DIR" ]; then
   available=$(ls "$PARAMETERS_ROOT/providers" 2>/dev/null | grep -v '^README' | tr '\n' ' ' || true)
