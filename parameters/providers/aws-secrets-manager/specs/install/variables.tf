@@ -39,16 +39,16 @@ variable "instances" {
     Each entry carries its own NRN, dimensions, and a provider-specific `attributes`
     object that each caller shapes to match its provider specification schema (e.g.
     Parameter Store sends setup.tier, Secrets Manager omits it).
-    Each instance also gets its own agent API key + notification channel (anchored at the
-    instance NRN) unless notification_channel_enabled=false. Fields:
-      attributes                   — provider-specific config matching the provider spec schema (opaque here).
+    Instances with enable_notification_channel=true also get their own agent API key + notification
+    channel (anchored at the instance NRN). Fields:
+      attributes                  — provider-specific config matching the provider spec schema (opaque here).
       enable_notification_channel — create the agent API key + notification channel for this instance (default false).
-      tags_selectors  — tags the agent uses to select/filter this channel against scope tags
-                        (e.g. { environment = "production" }); default {}.
+      tags_selectors              — tags the agent uses to select/filter this channel against scope tags
+                                    (e.g. { environment = "production" }); default {}.
   EOT
   type = map(object({
-    nrn        = string
-    dimensions = map(string)
+    nrn                         = string
+    dimensions                  = map(string)
     enable_notification_channel = optional(bool, false)
     tags_selectors              = optional(map(string), {})
     attributes = object({
