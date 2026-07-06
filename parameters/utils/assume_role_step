@@ -27,19 +27,22 @@
 #
 # Unlike the k8s flow — where the platform pre-resolves the IAM provider into
 # CONTEXT.providers["identity-access-control"] using the scope's dimensions —
-# parameter actions don't get the IAM provider in the payload. We fetch it
-# ourselves via `np provider list --categories identity-access-control`, passing
-# `--nrn` and (when present) `--dimensions` so the platform performs the same
+# parameter actions don't get the IAM provider in the payload. This step fetches
+# it via `np provider list --categories identity-access-control` (passing `--nrn`
+# and, when present, `--dimensions`) so the platform performs the same
 # dimension-aware resolution it would do for k8s scopes.
 #
-# NRN construction (organization/account/namespace/application are guaranteed):
-#   - value_entities present → NRN includes scope segment (`...:scope=<id>`)
-#   - else                   → NRN is app-level (organization=…:account=…:namespace=…:application=…)
+# NRN + dimensions are computed here, directly from the payload:
+#   - NRN: value_entities present → includes scope segment (`...:scope=<id>`);
+#          else app-level (organization=…:account=…:namespace=…:application=…)
+#   - dimensions: $CONTEXT.value_dimensions (scope-level) → $CONTEXT.dimensions
+#          (dim-level) → none (NRN-only lookup). Slugs/dimensions all travel in
+#          the payload, so no `np scope read` is needed.
 #
-# Dimension resolution precedence:
-#   1. $CONTEXT.dimensions, if it's a non-empty object → pass to np
-#   2. else if value_entities.scope is present → `np scope read --id ... --query .dimensions`
-#   3. else no `--dimensions` flag (NRN-only lookup)
+# Only providers that assume a cloud IAM role source this step (the AWS
+# providers, via their `setup`). Providers that authenticate differently
+# (e.g. HashiCorp Vault, Azure Key Vault) don't source it, so the
+# `np provider list` lookup never fires for them.
 #
 # ARN resolution precedence (see resolve_assume_role_arn in assume_role_lib):
 #   ${!ASSUME_ROLE_OVERRIDE_ENV} -> IAM provider by selector
@@ -66,15 +69,39 @@ if [ -z "${SCOPE_ID:-}" ]; then
   export SCOPE_ID
 fi
 
-# IAM provider data is pre-fetched by utils/prefetch_np into $NP_CACHE_DIR/iam.json.
-# No np call here — just read the cached result.
-if [ -n "${NP_CACHE_DIR:-}" ] && [ -s "$NP_CACHE_DIR/iam.json" ]; then
-  IAM_ATTRIBUTES=$(jq -c '.results[0].attributes // {}' < "$NP_CACHE_DIR/iam.json" 2>/dev/null)
-else
-  if [ -n "${NP_CACHE_DIR:-}" ] && [ -s "$NP_CACHE_DIR/iam.err" ]; then
-    log warn "   ⚠️  IAM provider lookup failed during prefetch: $(cat "$NP_CACHE_DIR/iam.err")"
+# --- IAM provider lookup ----------------------------------------------------
+# NRN + dimensions come straight from the payload (no `np scope read`).
+# value_entities (scope-level) wins over entities (app/dim-level);
+# organization/account/namespace/application are always present, scope only for
+# scope-level payloads.
+NRN=$(echo "${CONTEXT:-}" | jq -r '
+  (.value_entities // .entities) |
+  [
+    ("organization=" + .organization),
+    ("account=" + .account),
+    ("namespace=" + .namespace),
+    ("application=" + .application)
+  ]
+  + (if .scope then [("scope=" + .scope)] else [] end)
+  | join(":")')
+
+# Dimensions: .value_dimensions (scope-level) → .dimensions (dim-level) → none.
+DIMS_JSON=$(echo "${CONTEXT:-}" | jq -c '.value_dimensions // .dimensions // empty')
+DIMS_ARG=""
+if [ -n "$DIMS_JSON" ] && [ "$DIMS_JSON" != "null" ] && [ "$DIMS_JSON" != "{}" ]; then
+  DIMS_ARG=$(printf '%s' "$DIMS_JSON" | jq -r 'to_entries | map("\(.key):\(.value)") | join(",")')
+fi
+
+log debug "🔎 IAM lookup (NRN=$NRN${DIMS_ARG:+ dims=$DIMS_ARG})"
+IAM_ATTRIBUTES=""
+if [ -n "$NRN" ]; then
+  iam_args=(--categories identity-access-control --nrn "$NRN" --format json)
+  [ -n "$DIMS_ARG" ] && iam_args+=(--dimensions "$DIMS_ARG")
+  if iam_json=$(np provider list "${iam_args[@]}" 2>&1); then
+    IAM_ATTRIBUTES=$(jq -c '.results[0].attributes // {}' <<<"$iam_json" 2>/dev/null)
+  else
+    log warn "   ⚠️  IAM provider lookup failed: $iam_json"
   fi
-  IAM_ATTRIBUTES=""
 fi
 
 # --- 4. Resolve and export the ARN -----------------------------------------

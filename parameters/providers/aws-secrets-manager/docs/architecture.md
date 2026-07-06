@@ -74,7 +74,7 @@ nullplatform/organization=acme-1255165411/account=prod-95118862/namespace=billin
 Notes:
 
 - **Slug-id format** (`<slug>-<id>`): slugs are human-readable, IDs are stable. Combining both gives both readability and resilience to potential slug rename support in the future.
-- **Slugs are fetched via `np <entity> read --id <id> --format json --query '.slug'`** in parallel during the `store` operation.
+- **Slugs travel in the notification payload** (`entities`/`value_entities` carry `<entity>_slug` fields, guaranteed by the platform contract), so `build_external_id` reads them straight from `CONTEXT` — no `np` call.
 - **Dimensions are sorted alphabetically by key** for determinism — the same (NRN, dimensions, parameter) tuple always produces the same secret name.
 - **`parameter_name-parameter_id`** at the end: name for legibility, ID for uniqueness across renames.
 
@@ -102,7 +102,7 @@ source "$PARAMETERS_ROOT/utils/assume_role_step"
 
 The step is provider-agnostic — `aws-parameter-store` does the same with its own selector (`parameter_store`) and env-var names (`PARAMETER_STORE_ASSUME_ROLE_ARN[_DEFAULT]`). The step:
 
-1. Reads the scope's NRN and dimensions from `CONTEXT` (falling back to `np scope read` when dimensions are not in the payload).
+1. Reads the scope's NRN and dimensions from `CONTEXT` (`value_dimensions` for scope-level, else `dimensions`) — all resolved from the payload, no `np scope read`.
 2. Calls `np provider list --categories identity-access-control --nrn <nrn> [--dimensions ...]` to fetch the IAM provider that the platform has dimension-resolved for this scope.
 3. Picks the ARN from `.iam_role_arns.arns[]` whose `selector` matches `ASSUME_ROLE_SELECTOR`.
 4. Calls `sts:AssumeRole` and exports `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN`.

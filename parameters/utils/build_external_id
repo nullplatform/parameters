@@ -7,15 +7,17 @@
 # console, Vault UI, az portal) sees the entity hierarchy, the dimensions, and
 # the parameter name + id directly in the path.
 #
-# Slugs are fetched in parallel via `np <type> read --id <id> --format json --query '.slug'`.
+# Slugs travel in the payload: entities/value_entities carry `<entity>_slug`
+# fields (organization_slug, account_slug, …, scope_slug), so no `np` call is
+# needed — the slug is read straight from CONTEXT alongside the id.
 # Entities are iterated in canonical NRN order; only present entities are included.
 # Dimensions are sorted alphabetically by key for determinism.
 #
 # Slugs in nullplatform are immutable (contract guarantee), so the resulting
 # EXTERNAL_ID is stable for the lifetime of the parameter.
 #
-# Requires: np CLI in PATH, jq, mktemp
-# Reads: CONTEXT (set by entrypoint), log function in scope
+# Requires: jq
+# Reads: CONTEXT (set by entrypoint)
 # Exports: EXTERNAL_ID (slash-separated canonical form)
 #
 # Each provider's store decides how to use EXTERNAL_ID:
@@ -39,34 +41,14 @@ build_external_id() {
   local segments=()
 
   for entity_type in "${entity_order[@]}"; do
-    local entity_id
+    local entity_id slug
     entity_id=$(echo "$entities_json" | jq -r ".$entity_type // empty")
     [ -z "$entity_id" ] && continue
 
-    # Entity slugs are pre-fetched by utils/prefetch_np into the cache. No
-    # np call here — just read the JSON record and pull .slug.
-    local entity_file="${NP_CACHE_DIR:-}/$entity_type.json"
-    if [ ! -s "$entity_file" ]; then
-      log error "❌ Missing pre-fetched record for $entity_type=$entity_id"
-      log error ""
-      log error "💡 Possible causes:"
-      log error "   • Entity does not exist in nullplatform"
-      log error "   • np CLI is not authenticated"
-      log error "   • utils/prefetch_np was not sourced before build_external_id"
-      log error ""
-      log error "🔧 How to fix:"
-      log error "   • Verify: np $entity_type read --id $entity_id --format json"
-      [ -s "${NP_CACHE_DIR:-}/$entity_type.err" ] && \
-        log error "   • Underlying error: $(cat "${NP_CACHE_DIR}/$entity_type.err")"
-      exit 1
-    fi
-
-    local slug
-    slug=$(jq -r '.slug // empty' < "$entity_file")
-    if [ -z "$slug" ]; then
-      log error "❌ Pre-fetched $entity_type record has no .slug (id=$entity_id)"
-      exit 1
-    fi
+    # Slug travels in the payload next to the id (e.g. organization_slug),
+    # guaranteed by the platform contract — no np call, just read it from
+    # CONTEXT's entities/value_entities.
+    slug=$(echo "$entities_json" | jq -r ".${entity_type}_slug // empty")
     segments+=("$entity_type=${slug}-${entity_id}")
   done
 

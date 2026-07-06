@@ -14,14 +14,6 @@ setup() {
 
   mkdir -p "$BATS_TEST_TMPDIR/bin"
 
-  # Pre-populate the np cache that utils/prefetch_np would normally produce.
-  export NP_CACHE_DIR="$BATS_TEST_TMPDIR/np-cache"
-  mkdir -p "$NP_CACHE_DIR"
-  echo '{"slug":"acme"}'    > "$NP_CACHE_DIR/organization.json"
-  echo '{"slug":"prod"}'    > "$NP_CACHE_DIR/account.json"
-  echo '{"slug":"billing"}' > "$NP_CACHE_DIR/namespace.json"
-  echo '{"slug":"api"}'     > "$NP_CACHE_DIR/application.json"
-
   export AWS_LOG="$BATS_TEST_TMPDIR/aws.log"
   cat > "$BATS_TEST_TMPDIR/bin/aws" << EOF
 #!/bin/bash
@@ -43,14 +35,20 @@ EOF
   export PS_TIER="Standard"
   export PARAMETER_ID=42
   export PARAMETER_VALUE="my-value"
+  # Slugs travel in the payload next to each entity id (build_external_id reads
+  # them straight from CONTEXT — no np call, no cache files).
   export CONTEXT='{
     "parameter_id": 42,
     "value": "my-value",
     "entities": {
       "organization": "1255165411",
+      "organization_slug": "acme",
       "account": "95118862",
+      "account_slug": "prod",
       "namespace": "37094320",
-      "application": "321402625"
+      "namespace_slug": "billing",
+      "application": "321402625",
+      "application_slug": "api"
     },
     "dimensions": {}
   }'
