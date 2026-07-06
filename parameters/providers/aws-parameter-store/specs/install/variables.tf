@@ -24,7 +24,7 @@ variable "template_path" {
 variable "repository_parameter_storage_spec_branch" {
   description = "Branch of the parameters repository from which the parameter storage spec is fetched."
   type        = string
-  default     = "feature/slugs-from-payload"
+  default     = "main"
 }
 
 variable "repository_parameter_storage_spec" {
