@@ -1,5 +1,7 @@
 module "hashicorp_vault_spec" {
-  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/parameter_storage_definition?ref=v6.2.0"
+  # TEMP: points at the printf fix branch (tofu-modules PR #431) so multi-line
+  # markdown in the spec template renders. Repin to a released tag once merged.
+  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/parameter_storage_definition?ref=fix/gomplate-echo-printf-newlines"
 
   nrn                                      = var.nrn
   np_api_key                               = var.np_api_key
