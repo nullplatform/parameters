@@ -3,7 +3,7 @@
   "description": "Stores nullplatform parameter values in HashiCorp Vault KV v2 with native versioning",
   "slug": "hashicorp-vault",
   "category": "parameters-storage",
-  "icon": "mdi:vault",
+  "icon": "simple-icons:vault",
   "visible_to": [
     "{{ env.Getenv "NRN" }}"
   ],
