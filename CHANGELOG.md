@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Replace the HashiCorp Vault provider's static token authentication with an authentication-mode selector supporting `userpass` (username/password via env vars) and `kubernetes` (pod ServiceAccount identity); `setup` now exchanges the credentials/identity for a short-lived Vault token. Adds a provider README with the required Vault and cluster setup per mode.
 - Read entity slugs from the notification payload and remove the remote calls to the nullplatform API.
 - Refactor the AWS Parameter Store and Secrets Manager installation to build on reusable Terraform modules (`parameter_storage_definition`, `parameter_storage_configuration`, and the agent-association module) instead of a bundled local module, adding per-instance provider configuration and opt-in agent notification channels.
 

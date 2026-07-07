@@ -10,6 +10,7 @@ instances = {
     address    = "https://vault.prod.example.com:8200"
     applies_to = ["secret", "non_secret"]
 
+    # auth_mode defaults to "userpass": the agent reads VAULT_USERNAME / VAULT_PASSWORD from env.
     # Each instance gets its own agent API key + notification channel anchored at its nrn.
     tags_selectors = { environment = "production" }
   }
@@ -18,6 +19,11 @@ instances = {
     dimensions = { environment = "staging" }
     address    = "https://vault.staging.example.com:8200"
     applies_to = ["secret", "non_secret"]
+
+    # Kubernetes auth: the agent uses its pod ServiceAccount identity — no credentials in env.
+    # kubernetes_role must match the Vault role bound to the agent's ServiceAccount.
+    auth_mode       = "kubernetes"
+    kubernetes_role = "nullplatform-agent"
 
     # Skip the agent channel + API key for this instance (e.g. managed elsewhere).
     notification_channel_enabled = false

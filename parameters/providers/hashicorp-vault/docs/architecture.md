@@ -8,7 +8,7 @@ This document describes the `parameters/providers/hashicorp-vault/` implementati
 
 | Step | What happens                                                                          |
 |------|---------------------------------------------------------------------------------------|
-| `setup`     | Reads `VAULT_ADDR`, `VAULT_TOKEN`, `VAULT_PATH_PREFIX` (default `secret/data/nullplatform`). Fails fast if address or token is missing. |
+| `setup`     | Reads `VAULT_ADDR`, `VAULT_AUTH_MODE` (default `userpass`) and the mode's inputs, plus `VAULT_PATH_PREFIX` (default `secret/data/nullplatform`). Authenticates against Vault and exports the derived short-lived token as `VAULT_TOKEN`. Fails fast if address or credentials/identity are missing. |
 | `store`     | Composes the canonical path via `build_external_id`. POSTs to `$VAULT_ADDR/v1/$VAULT_PATH_PREFIX/<path>` with a JSON payload. Captures the new version number from Vault's response. Returns `external_id = <path>#<version>`. |
 | `retrieve`  | Parses `EXTERNAL_ID` into path + version. GETs `$VAULT_ADDR/v1/$VAULT_PATH_PREFIX/<path>?version=<N>` if a version is present; otherwise fetches the latest. Returns `{value}` or `{value: "value not found"}`. |
 | `delete`    | Parses path from external_id. DELETEs the metadata endpoint (KV v2) — removes all versions. Idempotent. |
@@ -87,6 +87,22 @@ The `data` wrapper is KV v2's API requirement; the inner object is our envelope.
 
 ## Authentication
 
-Token-based via `X-Vault-Token` header. The token must have read/write permissions on the configured `VAULT_PATH_PREFIX` namespace.
+`setup` authenticates against Vault and exchanges the credentials/identity for a
+short-lived client token, which it exports as `VAULT_TOKEN`. `store`, `retrieve`
+and `delete` are auth-agnostic — they just send that token in the `X-Vault-Token`
+header. Two modes are selectable via `.setup.auth_mode` (or `VAULT_AUTH_MODE`):
 
-For production: use short-lived tokens (issued by AppRole, Kubernetes auth, etc.) refreshed by the operator outside this package. The agent only reads `VAULT_TOKEN` — credential lifecycle management is the operator's responsibility.
+| Mode         | Inputs                                                                 | Login endpoint                        |
+|--------------|-----------------------------------------------------------------------|---------------------------------------|
+| `userpass`   | `VAULT_USERNAME`, `VAULT_PASSWORD` (env only — the password is sensitive) | `POST /v1/auth/userpass/login/<user>` |
+| `kubernetes` | `.setup.kubernetes_role` + the pod's ServiceAccount JWT (mounted file) | `POST /v1/auth/kubernetes/login`      |
+
+The authenticated identity (userpass user or the Vault Kubernetes role) must have
+a policy granting read/write on the configured `VAULT_PATH_PREFIX` namespace.
+
+The auth mounts are hardcoded to Vault's defaults (`auth/userpass`,
+`auth/kubernetes`). Because the agent re-authenticates on every run, each token is
+short-lived and scoped to the identity's policy — credential/role lifecycle
+management (rotating passwords, binding the ServiceAccount) is the operator's
+responsibility. See the provider [`README.md`](../README.md) for the required
+Vault + cluster setup per mode.

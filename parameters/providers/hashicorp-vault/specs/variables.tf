@@ -22,6 +22,10 @@ variable "instances" {
     sensibility set this instance handles (secret / non_secret / both).
     Each instance also gets its own agent API key + notification channel (anchored at the
     instance NRN) unless notification_channel_enabled=false. Fields:
+      auth_mode                    — how the agent authenticates to Vault: "userpass" (default) or
+                                      "kubernetes" (pod ServiceAccount identity).
+      kubernetes_role              — Vault Kubernetes auth role bound to the agent's ServiceAccount.
+                                      Required when auth_mode = "kubernetes"; leave null for userpass.
       notification_channel_enabled — create the agent channel + its API key for this instance (default true).
       tags_selectors               — tag key/value pairs the agent uses to match this instance's channel
                                       against scope tags (e.g. { environment = "development" }).
@@ -31,6 +35,8 @@ variable "instances" {
     dimensions                   = map(string)
     address                      = string
     applies_to                   = list(string)
+    auth_mode                    = optional(string, "userpass")
+    kubernetes_role              = optional(string)
     notification_channel_enabled = optional(bool, true)
     tags_selectors               = optional(map(string), {})
   }))

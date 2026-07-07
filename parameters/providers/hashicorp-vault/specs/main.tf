@@ -42,9 +42,17 @@ module "scope_configuration" {
     sensibility = {
       applies_to = each.value.applies_to
     }
-    setup = {
-      address = each.value.address
-    }
+    # kubernetes_role is only relevant (and schema-required) when auth_mode is
+    # kubernetes, so it's added conditionally to keep userpass instances clean.
+    setup = merge(
+      {
+        address   = each.value.address
+        auth_mode = each.value.auth_mode
+      },
+      each.value.kubernetes_role == null ? {} : {
+        kubernetes_role = each.value.kubernetes_role
+      }
+    )
   }
 
   depends_on = [nullplatform_provider_specification.this]
