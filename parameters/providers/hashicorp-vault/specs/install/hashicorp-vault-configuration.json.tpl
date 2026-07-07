@@ -93,7 +93,7 @@
         },
         {
           "type": "Label",
-          "text": "> **ℹ️ Username / password authentication**\n\nCredentials are **not** stored in this configuration — the password is sensitive, so both values are read from environment variables in the nullplatform agent runtime:\n\n- **`VAULT_USERNAME`** — the Vault `userpass` username\n- **`VAULT_PASSWORD`** — the user's password (sensitive)\n\nSet both as environment variables in your agent Helm installation. The agent exchanges them for a short-lived Vault token on every run. The user must have a Vault policy granting read/write on `secret/data/nullplatform/*`. See the provider README for the full Vault setup.",
+          "text": "**ℹ️ Username / password authentication.** Credentials are **not** stored in this configuration — the password is sensitive, so both values are read from environment variables in the nullplatform agent runtime: **`VAULT_USERNAME`** (the Vault `userpass` username) and **`VAULT_PASSWORD`** (the user's password). Set both as environment variables in your agent Helm installation. The agent exchanges them for a short-lived Vault token on every run, and the user must have a Vault policy granting read/write on `secret/data/nullplatform/*`. See the provider README for the full Vault setup.",
           "options": { "format": "markdown" },
           "rule": {
             "effect": "HIDE",
@@ -116,7 +116,7 @@
         },
         {
           "type": "Label",
-          "text": "> **ℹ️ Kubernetes authentication (pod identity)**\n\nThe agent authenticates with its **Kubernetes ServiceAccount identity** — no secrets to configure. It reads the projected ServiceAccount token and exchanges it for a Vault token bound to the **Vault role** above.\n\nThis requires one-time setup on both Vault and the cluster:\n\n- Enable and configure the `kubernetes` auth method on Vault (`vault auth enable kubernetes`)\n- Create a Vault policy granting read/write on `secret/data/nullplatform/*`\n- Create a Vault role that binds the agent's ServiceAccount (name + namespace) to that policy\n\nSee the provider README for the exact Vault + cluster commands.",
+          "text": "**ℹ️ Kubernetes authentication (pod identity).** The agent authenticates with its **Kubernetes ServiceAccount identity** — no secrets to configure. It reads the projected ServiceAccount token and exchanges it for a Vault token bound to the **Vault role** above. This requires one-time setup on both Vault and the cluster: enable the `kubernetes` auth method on Vault (`vault auth enable kubernetes`), create a Vault policy granting read/write on `secret/data/nullplatform/*`, and create a Vault role that binds the agent's ServiceAccount (name + namespace) to that policy. Provision the cluster-side resources with the `specs/requirements/` module. See the provider README for the exact Vault + cluster commands.",
           "options": { "format": "markdown" },
           "rule": {
             "effect": "HIDE",
