@@ -91,25 +91,38 @@ vault write auth/kubernetes/role/nullplatform-agent \
 
 #### 2. Cluster setup
 
-The agent pod must run with the ServiceAccount referenced by the Vault role, and
-that ServiceAccount's token must be mounted:
+The in-cluster resources Vault's kubernetes auth needs are provisioned by the
+Terraform module in [`specs/requirements/`](./specs/requirements/) — it applies
+`.yaml` templates for the agent ServiceAccount and the token-reviewer
+ServiceAccount + its `system:auth-delegator` ClusterRoleBinding:
 
-```yaml
-# Agent ServiceAccount (name + namespace must match the Vault role bindings)
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: <agent-serviceaccount>
-  namespace: <agent-namespace>
----
-# In the agent Deployment/pod spec
-spec:
-  serviceAccountName: <agent-serviceaccount>
-  automountServiceAccountToken: true   # required — the JWT is read from the projected token
+```sh
+cd specs/requirements
+cp terraform.tfvars.example terraform.tfvars   # edit agent namespace + SA name
+tofu init && tofu apply
 ```
 
+> The manifests are applied with `kubernetes_manifest`, which reaches the cluster
+> API at **plan** time (server-side dry-run), not just apply. Make sure the target
+> cluster is reachable and pin the context with `kube_config_context` — this module
+> creates a cluster-wide `ClusterRoleBinding`.
+
+Its outputs (`agent_service_account`, `token_reviewer_service_account`) give the
+names/namespaces to plug into the Vault role bindings and the `token_reviewer_jwt`
+above. The agent pod must run with that ServiceAccount and mount its token
+(`serviceAccountName: <agent-serviceaccount>`, `automountServiceAccountToken: true`).
+
 Then set `setup.auth_mode = kubernetes` and `setup.kubernetes_role = nullplatform-agent`
-in the provider config. No credential env vars are needed in this mode.
+in the provider config (see [`specs/install/`](./specs/install/)). No credential
+env vars are needed in this mode.
+
+## Installation
+
+The provider specification and per-instance configs are installed with the
+Terraform in [`specs/install/`](./specs/install/), which builds on the shared
+`parameter_storage_definition` / `parameter_storage_configuration` modules
+(same structure as the AWS providers). For the `kubernetes` auth mode, apply
+[`specs/requirements/`](./specs/requirements/) first (see above).
 
 ## Troubleshooting
 
