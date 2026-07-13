@@ -1,0 +1,56 @@
+#!/bin/bash
+set -euo pipefail
+
+# Stores a parameter as an Azure Key Vault secret.
+#
+# Versioning model:
+#   nullplatform parameter values are immutable. Each update is a new VERSION.
+#   Azure Key Vault has native versioning — every `secret set` creates a new
+#   version, all retained inside the same secret. No special logic needed.
+#
+# AKV doesn't allow `/` or `=` in secret names, so the canonical EXTERNAL_ID is
+# transformed (slash → dash, equals → dash) for the secret name. The external_id
+# returned to nullplatform keeps the canonical slash form.
+#
+# Required env: PARAMETER_VALUE, AZ_VAULT_NAME, AZ_SECRET_PREFIX
+
+source "$PARAMETERS_ROOT/utils/build_external_id"
+build_external_id
+
+# AKV-safe name: replace / and = with -
+AKV_SUFFIX=$(echo "$EXTERNAL_ID" | tr '/=' '--')
+SECRET_NAME="${AZ_SECRET_PREFIX}${AKV_SUFFIX}"
+
+if ! AKV_ID=$(az keyvault secret set \
+        --vault-name "$AZ_VAULT_NAME" \
+        --name "$SECRET_NAME" \
+        --value "$PARAMETER_VALUE" \
+        --tags "managed_by=nullplatform" \
+        --query id \
+        --output tsv 2>/dev/null); then
+  log error "❌ Failed to store secret in Azure Key Vault '$AZ_VAULT_NAME'"
+  log error ""
+  log error "💡 Possible causes:"
+  log error "   • Identity lacks Set permission on $AZ_VAULT_NAME"
+  log error "   • Vault is in soft-deleted state or firewall blocks the caller"
+  log error "   • Secret name length exceeds AKV limit of 127 chars (current: ${#SECRET_NAME})"
+  log error ""
+  log error "🔧 How to fix:"
+  log error "   • Verify identity: az account show"
+  log error "   • Check access policy: az keyvault show --name $AZ_VAULT_NAME --query properties.accessPolicies"
+  exit 1
+fi
+
+# AKV id URL format: https://<vault>.vault.azure.net/secrets/<name>/<version>
+# The last path component is the version id (hex string).
+VERSION_ID="${AKV_ID##*/}"
+
+# Encode version into external_id (the canonical handle nullplatform persists).
+[ -n "$VERSION_ID" ] && EXTERNAL_ID="${EXTERNAL_ID}#${VERSION_ID}"
+
+jq -n \
+    --arg external_id "$EXTERNAL_ID" \
+    --arg secret_id "$AKV_ID" \
+    --arg secret_name "$SECRET_NAME" \
+    --arg vault_name "$AZ_VAULT_NAME" \
+    '{external_id: $external_id, metadata: {azure_secret_id: $secret_id, secret_name: $secret_name, vault_name: $vault_name}}'

@@ -1,0 +1,57 @@
+#!/bin/bash
+set -euo pipefail
+
+# Deletes a secret from Azure Key Vault. Idempotent.
+# Soft-delete + purge (purge is best-effort, downgraded to warning on failure).
+#
+# Required env: EXTERNAL_ID (canonical slash form), AZ_VAULT_NAME, AZ_SECRET_PREFIX
+
+# AKV stores with dashes (no `/` or `=`); transform from canonical form.
+AKV_SUFFIX=$(echo "$EXTERNAL_ID_PATH" | tr '/=' '--')
+SECRET_NAME="${AZ_SECRET_PREFIX}${AKV_SUFFIX}"
+
+err_file=$(mktemp)
+if az keyvault secret delete \
+        --vault-name "$AZ_VAULT_NAME" \
+        --name "$SECRET_NAME" >/dev/null 2>"$err_file"; then
+  rm -f "$err_file"
+else
+  err=$(cat "$err_file")
+  rm -f "$err_file"
+  if echo "$err" | grep -qE "(SecretNotFound|secret with .* was not found)"; then
+    log debug "Secret '$SECRET_NAME' does not exist, treating delete as success"
+    echo '{
+  "success": true
+}'
+    return 0 2>/dev/null || exit 0
+  else
+    log error "❌ Failed to delete secret '$SECRET_NAME' from Azure Key Vault '$AZ_VAULT_NAME'"
+    log error ""
+    log error "💡 Possible causes:"
+    log error "   • Identity lacks 'Delete' permission on vault $AZ_VAULT_NAME"
+    log error "   • Vault firewall blocks the caller"
+    log error ""
+    log error "🔧 How to fix:"
+    log error "   • Verify identity: az account show"
+    log error "Underlying error: $err"
+    exit 1
+  fi
+fi
+
+# Best-effort purge to release name and stop retention billing.
+purge_err=$(mktemp)
+if ! az keyvault secret purge \
+        --vault-name "$AZ_VAULT_NAME" \
+        --name "$SECRET_NAME" >/dev/null 2>"$purge_err"; then
+  pe=$(cat "$purge_err")
+  if echo "$pe" | grep -qiE "(Forbidden|not authorized|purge permission)"; then
+    log warn "⚠️ Purge permission missing on '$AZ_VAULT_NAME' — secret remains in soft-delete window"
+  else
+    log warn "⚠️ Purge failed (secret remains in soft-delete window): $pe"
+  fi
+fi
+rm -f "$purge_err"
+
+echo '{
+  "success": true
+}'

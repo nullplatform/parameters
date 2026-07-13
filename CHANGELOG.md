@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add support to manage (store, retrieve and delete) parameters from HashiCorp Vault.
 
+### Added
+
+- Add support to manage (store, retrieve and delete) parameters from Azure Key Vault.
+
 ### Changed
 
 - Read entity slugs from the notification payload and remove the remote calls to the nullplatform API.
