@@ -37,9 +37,7 @@ HTTP_BODY="${RESPONSE%$'\n'*}"
 case "$HTTP_STATUS" in
   2*)
     STORED_VALUE=$(echo "$HTTP_BODY" | jq -r '.data.data.value // empty')
-    echo '{
-      "value": "'$STORED_VALUE'"
-    }'
+    jq -n --arg value "$STORED_VALUE" '{value: $value}'
     ;;
   404)
     log error "❌ Secret at $VAULT_PATH not found in Vault"
