@@ -48,6 +48,23 @@ EOF
   assert_equal "$value" "the-real-secret"
 }
 
+@test "vault retrieve: 200 preserves values with quotes without JSON injection" {
+  # A stored value crafted to break naive string-interpolated JSON output.
+  malicious='inject","injected":"x'
+  body=$(jq -nc --arg v "$malicious" '{data:{data:{value:$v}}}')
+
+  run bash -c "$DEPS; MOCK_HTTP_STATUS=200 MOCK_HTTP_BODY='$body' source $SCRIPT"
+
+  assert_equal "$status" "0"
+  # Output must be valid JSON with the value preserved verbatim...
+  echo "$output" | jq -e . >/dev/null
+  value=$(echo "$output" | jq -r '.value')
+  assert_equal "$value" "$malicious"
+  # ...and must NOT have gained an injected top-level key.
+  injected=$(echo "$output" | jq -r '.injected // "ABSENT"')
+  assert_equal "$injected" "ABSENT"
+}
+
 @test "vault retrieve: 404 fails with troubleshooting" {
   run bash -c "$DEPS; MOCK_HTTP_STATUS=404 source $SCRIPT"
 
