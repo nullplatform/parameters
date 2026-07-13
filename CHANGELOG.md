@@ -8,12 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 ### Added
 
-- Add support to manage (store, retrieve and delete) parameters from Azure Key Vault and HashiCorp Vault.
+- Add support to manage (store, retrieve and delete) parameters from HashiCorp Vault.
 
 ### Changed
 
-- Replace the HashiCorp Vault provider's static token authentication with an authentication-mode selector supporting `userpass` (username/password via env vars) and `kubernetes` (pod ServiceAccount identity); `setup` now exchanges the credentials/identity for a short-lived Vault token. Adds a provider README with the required Vault and cluster setup per mode.
-- Restructure the HashiCorp Vault provider installation to build on the shared Terraform modules (`parameter_storage_definition`, `parameter_storage_configuration`, `api_key`, and the agent-association module) under `specs/install/`, matching the AWS providers, with per-instance provider configuration and opt-in agent notification channels. Adds a `specs/requirements/` module that provisions the in-cluster Kubernetes resources (agent and token-reviewer ServiceAccounts + `system:auth-delegator` binding) for the Kubernetes auth mode from `.yaml` templates.
 - Read entity slugs from the notification payload and remove the remote calls to the nullplatform API.
 - Refactor the AWS Parameter Store and Secrets Manager installation to build on reusable Terraform modules (`parameter_storage_definition`, `parameter_storage_configuration`, and the agent-association module) instead of a bundled local module, adding per-instance provider configuration and opt-in agent notification channels.
 
