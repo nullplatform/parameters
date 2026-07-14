@@ -51,8 +51,8 @@
           },
           "namespace": {
             "type": "string",
-            "title": "KV path prefix",
-            "description": "Vault KV v2 mount + path prefix under which parameters are stored. Must include the KV v2 `data/` segment (e.g. secret/data/nullplatform). This is a KV path prefix, not a Vault Enterprise namespace.",
+            "title": "Namespace",
+            "description": "Namespace and path prefix under which parameters are stored. Must include the KV v2 `data/` segment (e.g. secret/data/nullplatform).",
             "order": 2,
             "default": "secret/data/nullplatform"
           },
