@@ -8,10 +8,13 @@ set -euo pipefail
 #   - HTTP 404 → return {value: "value not found"} (legitimate miss)
 #   - Any other HTTP status or network error → exit 1 with troubleshooting
 #
-# Required env: EXTERNAL_ID, VAULT_ADDR, VAULT_TOKEN, VAULT_PATH_PREFIX
+# Required env: EXTERNAL_ID, VAULT_ADDR, VAULT_TOKEN
 
-# EXTERNAL_ID_PATH and EXTERNAL_ID_VERSION are set by build_context.
-VAULT_PATH="$VAULT_PATH_PREFIX/$EXTERNAL_ID_PATH"
+# EXTERNAL_ID_PATH and EXTERNAL_ID_VERSION are set by build_context. The path is
+# the full, self-contained Vault path (the KV prefix was embedded by store), so it
+# is used verbatim — never recomposed against the current VAULT_PATH_PREFIX. This
+# keeps references valid across setup.namespace changes.
+VAULT_PATH="$EXTERNAL_ID_PATH"
 
 URL="$VAULT_ADDR/v1/$VAULT_PATH"
 if [ -n "${EXTERNAL_ID_VERSION:-}" ]; then

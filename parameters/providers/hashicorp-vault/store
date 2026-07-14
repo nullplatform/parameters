@@ -18,7 +18,12 @@ set -euo pipefail
 source "$PARAMETERS_ROOT/utils/build_external_id"
 build_external_id
 
-VAULT_PATH="$VAULT_PATH_PREFIX/$EXTERNAL_ID"
+# Embed the KV path prefix so the external_id IS the full, self-contained Vault
+# path. retrieve/delete then use it verbatim instead of recomposing it against the
+# current VAULT_PATH_PREFIX — so existing references stay valid even if
+# setup.namespace is later reconfigured.
+EXTERNAL_ID="$VAULT_PATH_PREFIX/$EXTERNAL_ID"
+VAULT_PATH="$EXTERNAL_ID"
 
 PAYLOAD=$(jq -nc \
     --argjson parameter_id "${PARAMETER_ID:-null}" \

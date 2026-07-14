@@ -29,8 +29,8 @@ EOF
 
   export VAULT_ADDR="https://vault.example.com"
   export VAULT_TOKEN="hvs.test-token"
-  export VAULT_PATH_PREFIX="secret/data/nullplatform"
-  export EXTERNAL_ID="abc-123"
+  # external_id path is the full, self-contained Vault path (KV prefix embedded by store).
+  export EXTERNAL_ID="secret/data/nullplatform/abc-123"
 
   export EXTERNAL_ID_PATH="$EXTERNAL_ID"
   export EXTERNAL_ID_VERSION=""
@@ -95,11 +95,15 @@ EOF
   assert_contains "$captured" "https://vault.example.com/v1/secret/data/nullplatform/abc-123"
 }
 
-@test "vault delete: honors custom VAULT_PATH_PREFIX" {
-  export VAULT_PATH_PREFIX="kv/data/custom-mount"
+@test "vault delete: uses external_id path verbatim, ignoring current VAULT_PATH_PREFIX" {
+  # Regression: simulates setup.namespace being reconfigured AFTER this secret was
+  # stored. The full path lives in the external_id, so it must win over the current
+  # prefix — otherwise the delete would target the wrong (or a non-existent) path.
+  export EXTERNAL_ID_PATH="secret/data/original-ns/abc-123"
+  export VAULT_PATH_PREFIX="secret/data/reconfigured-ns"
 
   run bash -c "$DEPS; MOCK_HTTP_STATUS=204 source $SCRIPT"
 
   captured=$(cat "$CURL_LOG")
-  assert_contains "$captured" "https://vault.example.com/v1/kv/data/custom-mount/abc-123"
+  assert_contains "$captured" "https://vault.example.com/v1/secret/data/original-ns/abc-123"
 }

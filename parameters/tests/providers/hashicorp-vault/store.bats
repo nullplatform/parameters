@@ -59,8 +59,8 @@ EOF
 
   assert_equal "$status" "0"
   external_id=$(echo "$output" | jq -r '.external_id')
-  # Mock returns .data.version=3
-  expected="organization=acme-1255165411/account=prod-95118862/namespace=billing-37094320/application=api-321402625/42#3"
+  # external_id embeds the KV path prefix and the version (mock returns .data.version=3).
+  expected="secret/data/nullplatform/organization=acme-1255165411/account=prod-95118862/namespace=billing-37094320/application=api-321402625/42#3"
   assert_equal "$external_id" "$expected"
 }
 
@@ -99,7 +99,7 @@ EOF
   captured=$(cat "$CURL_LOG")
   assert_contains "$captured" '"parameter_id":42'
   assert_contains "$captured" '"value":"my-secret"'
-  assert_contains "$captured" '"external_id":"organization=acme-1255165411'
+  assert_contains "$captured" '"external_id":"secret/data/nullplatform/organization=acme-1255165411'
   assert_contains "$captured" '"stored_at":"'
 }
 
@@ -111,6 +111,17 @@ EOF
   assert_contains "$output" "💡 Possible causes:"
 }
 
+@test "vault store: external_id embeds a custom VAULT_PATH_PREFIX" {
+  export VAULT_PATH_PREFIX="kv/data/custom-mount"
+
+  run bash -c "$DEPS; source $SCRIPT"
+
+  assert_equal "$status" "0"
+  external_id=$(echo "$output" | jq -r '.external_id')
+  # The configured prefix is baked into the external_id, not just the request URL.
+  assert_contains "$external_id" "kv/data/custom-mount/organization=acme-1255165411"
+}
+
 @test "vault store: works without dimensions" {
   export CONTEXT=$(echo "$CONTEXT" | jq 'del(.dimensions)')
 
@@ -118,6 +129,6 @@ EOF
 
   assert_equal "$status" "0"
   external_id=$(echo "$output" | jq -r '.external_id')
-  expected="organization=acme-1255165411/account=prod-95118862/namespace=billing-37094320/application=api-321402625/42#3"
+  expected="secret/data/nullplatform/organization=acme-1255165411/account=prod-95118862/namespace=billing-37094320/application=api-321402625/42#3"
   assert_equal "$external_id" "$expected"
 }

@@ -8,9 +8,13 @@ set -euo pipefail
 #   - HTTP 404 → success (already gone; treated as idempotent)
 #   - Any other HTTP status or network error → exit 1 with troubleshooting
 #
-# Required env: EXTERNAL_ID, VAULT_ADDR, VAULT_TOKEN, VAULT_PATH_PREFIX
+# Required env: EXTERNAL_ID, VAULT_ADDR, VAULT_TOKEN
 
-VAULT_PATH="$VAULT_PATH_PREFIX/$EXTERNAL_ID_PATH"
+# EXTERNAL_ID_PATH is the full, self-contained Vault path (the KV prefix was
+# embedded by store), so it is used verbatim — never recomposed against the
+# current VAULT_PATH_PREFIX. This keeps references valid across setup.namespace
+# changes.
+VAULT_PATH="$EXTERNAL_ID_PATH"
 
 if ! RESPONSE=$(curl -s -w "\n%{http_code}" -X DELETE \
     -H "X-Vault-Token: $VAULT_TOKEN" \

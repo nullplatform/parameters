@@ -9,8 +9,8 @@ This document describes the `parameters/providers/hashicorp-vault/` implementati
 | Step | What happens                                                                          |
 |------|---------------------------------------------------------------------------------------|
 | `setup`     | Reads `VAULT_ADDR`, `VAULT_AUTH_MODE` (default `userpass`) and the mode's inputs, plus `VAULT_PATH_PREFIX` (default `secret/data/nullplatform`). Authenticates against Vault and exports the derived short-lived token as `VAULT_TOKEN`. Fails fast if address or credentials/identity are missing. |
-| `store`     | Composes the canonical path via `build_external_id`. POSTs to `$VAULT_ADDR/v1/$VAULT_PATH_PREFIX/<path>` with a JSON payload. Captures the new version number from Vault's response. Returns `external_id = <path>#<version>`. |
-| `retrieve`  | Parses `EXTERNAL_ID` into path + version. GETs `$VAULT_ADDR/v1/$VAULT_PATH_PREFIX/<path>?version=<N>` if a version is present; otherwise fetches the latest. Returns `{value}` or `{value: "value not found"}`. |
+| `store`     | Composes the canonical path via `build_external_id` and prepends `VAULT_PATH_PREFIX`, so the `external_id` is the full, self-contained Vault path. POSTs to `$VAULT_ADDR/v1/<full_path>` with a JSON payload. Captures the new version number from Vault's response. Returns `external_id = <VAULT_PATH_PREFIX>/<path>#<version>`. |
+| `retrieve`  | Splits `EXTERNAL_ID` into path + version. GETs `$VAULT_ADDR/v1/<full_path>?version=<N>` using the path **verbatim** (the KV prefix is already embedded — never recomposed against the current `VAULT_PATH_PREFIX`, so a later `setup.namespace` change can't orphan the reference). Returns `{value}` or `{value: "value not found"}`. |
 | `delete`    | Parses path from external_id. DELETEs the metadata endpoint (KV v2) — removes all versions. Idempotent. |
 | `notify`    | Not implemented — dispatcher returns default `{success: true}`. |
 
@@ -44,16 +44,21 @@ Vault KV v2 has native versioning. Every `POST /v1/secret/data/<path>` creates a
 
 ### Version identity in external_id
 
-The `external_id` returned by `store` encodes both the path and the version:
+The `external_id` returned by `store` is the full Vault path (KV prefix included)
+plus the version:
 
 ```
-<canonical_path>#<version_id>
+<VAULT_PATH_PREFIX>/<canonical_path>#<version_id>
 ```
+
+Embedding the prefix makes the `external_id` self-contained: `retrieve`/`delete`
+resolve it verbatim, so reconfiguring `setup.namespace` never orphans previously
+stored references.
 
 For Vault KV v2, `version_id` is **the literal integer version number returned by Vault** in `.data.version` — we do not invent or normalize it. Real example:
 
 ```
-organization=acme-1255165411/.../DB_PASSWORD-42#3
+secret/data/nullplatform/organization=acme-1255165411/.../DB_PASSWORD-42#3
 ```
 
 Here `3` means "Vault version 3 of this secret". It can be used as-is with `?version=3` to fetch that specific version.
@@ -76,7 +81,7 @@ The body stored in Vault is a JSON envelope:
     "parameter_id": 42,
     "value": "the-actual-value",
     "stored_at": "2026-06-23T12:34:56Z",
-    "external_id": "organization=acme-1255165411/.../DB_PASSWORD-42"
+    "external_id": "secret/data/nullplatform/organization=acme-1255165411/.../DB_PASSWORD-42"
   }
 }
 ```
