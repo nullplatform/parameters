@@ -1,0 +1,9 @@
+service_principal = {
+  enable       = true
+  display_name = "nullplatform-azure-key-vault"
+  key_vault_ids = [
+    "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/acme-prod/providers/Microsoft.KeyVault/vaults/acme-prod-billing-kv",
+  ]
+  # role            = "Key Vault Secrets Officer"  # default
+  # secret_end_date = "2027-01-01T00:00:00Z"       # default: provider default (2 years)
+}

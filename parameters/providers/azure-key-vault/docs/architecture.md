@@ -83,4 +83,14 @@ If the identity lacks `Purge` permission, purge fails with a warning but delete 
 }
 ```
 
-Authentication comes from the Azure CLI's default credential chain (managed identity, az login, service principal env vars).
+## Authentication
+
+The agent authenticates to Azure as a managed identity or a service principal.
+The `setup` script logs the Azure CLI in with a service principal when the
+`AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET` / `AZURE_TENANT_ID` env vars are present
+(the `az` CLI, unlike the Azure SDKs, does not read them automatically); otherwise
+it relies on an existing session (managed identity or a prior `az login`).
+
+The identity needs the `Key Vault Secrets Officer` RBAC role on the vault — see
+[`azure-rbac.md`](./azure-rbac.md). The `specs/requirements/` module can create the
+service principal and assign the role.
