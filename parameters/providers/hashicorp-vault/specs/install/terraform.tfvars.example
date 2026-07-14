@@ -20,6 +20,10 @@ instances = {
       }
       setup = {
         address = "https://vault.prod.example.com:8200"
+        # namespace is the KV v2 mount + path prefix; it defaults to "secret/data/nullplatform"
+        # when omitted. Override it to store parameters under a different KV path — keep the
+        # KV v2 "data/" segment (e.g. "secret/data/acme-billing"):
+        # namespace = "secret/data/acme-billing"
         # auth_mode defaults to "userpass": the agent reads VAULT_USERNAME / VAULT_PASSWORD from env.
       }
     }
@@ -33,6 +37,8 @@ instances = {
       }
       setup = {
         address = "https://vault.staging.example.com:8200"
+        # Custom KV path prefix — parameters are stored under secret/data/acme-staging/...
+        namespace = "secret/data/acme-staging"
         # Kubernetes auth: the agent uses its pod ServiceAccount identity — no credentials in env.
         # kubernetes_role must match the Vault role bound to the agent's ServiceAccount.
         # Provision the cluster-side resources with the requirements/ module.

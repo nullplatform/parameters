@@ -17,15 +17,19 @@ set -euo pipefail
 # store/retrieve/delete keep using the X-Vault-Token header with no knowledge of
 # how the token was obtained.
 #
-# The KV path prefix is hardcoded to `secret/data/nullplatform` — invariant
-# namespace for all platform secrets. Auth mounts are hardcoded to Vault's
-# defaults (auth/userpass, auth/kubernetes). VAULT_ADDR is operator-configurable.
+# The KV path prefix defaults to `secret/data/nullplatform` but is operator-
+# configurable via .setup.namespace (or the VAULT_PATH_PREFIX env var) — it is the
+# KV v2 mount + path prefix, not a Vault Enterprise namespace. Auth mounts are
+# hardcoded to Vault's defaults (auth/userpass, auth/kubernetes). VAULT_ADDR is
+# operator-configurable.
 #
 # Exports: VAULT_ADDR, VAULT_TOKEN, VAULT_PATH_PREFIX
 
 VAULT_ADDR=$(get_config_value --env VAULT_ADDR --provider '.setup.address')
 VAULT_AUTH_MODE=$(get_config_value --env VAULT_AUTH_MODE --provider '.setup.auth_mode' --default "userpass")
-VAULT_PATH_PREFIX="secret/data/nullplatform"
+VAULT_PATH_PREFIX=$(get_config_value --env VAULT_PATH_PREFIX --provider '.setup.namespace' --default "secret/data/nullplatform")
+# Trim a trailing slash so store/retrieve/delete don't compose a double slash.
+VAULT_PATH_PREFIX="${VAULT_PATH_PREFIX%/}"
 
 if [ -z "$VAULT_ADDR" ]; then
   log error "❌ Vault address not configured"

@@ -49,11 +49,18 @@
             "description": "Vault HTTP(S) endpoint (e.g. https://vault.example.com:8200)",
             "order": 1
           },
+          "namespace": {
+            "type": "string",
+            "title": "KV path prefix",
+            "description": "Vault KV v2 mount + path prefix under which parameters are stored. Must include the KV v2 `data/` segment (e.g. secret/data/nullplatform). This is a KV path prefix, not a Vault Enterprise namespace.",
+            "order": 2,
+            "default": "secret/data/nullplatform"
+          },
           "auth_mode": {
             "type": "string",
             "title": "Authentication mode",
             "description": "How the nullplatform agent authenticates to Vault.",
-            "order": 2,
+            "order": 3,
             "default": "userpass",
             "oneOf": [
               { "const": "userpass",   "title": "Username and password" },
@@ -64,7 +71,7 @@
             "type": "string",
             "title": "Vault Kubernetes role",
             "description": "Name of the Vault Kubernetes auth role bound to the agent's ServiceAccount. Required when the authentication mode is Kubernetes.",
-            "order": 3
+            "order": 4
           }
         },
         "allOf": [
@@ -85,6 +92,10 @@
         {
           "type": "Control",
           "scope": "#/properties/setup/properties/address"
+        },
+        {
+          "type": "Control",
+          "scope": "#/properties/setup/properties/namespace"
         },
         {
           "type": "Control",

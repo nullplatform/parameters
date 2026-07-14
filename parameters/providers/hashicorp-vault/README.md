@@ -11,11 +11,19 @@ Provider config (from the nullplatform provider specification):
 | Field                  | Required            | Description                                                                 |
 |------------------------|---------------------|-----------------------------------------------------------------------------|
 | `setup.address`        | yes                 | Vault HTTP(S) endpoint, e.g. `https://vault.example.com:8200`.               |
+| `setup.namespace`      | no (default `secret/data/nullplatform`) | KV v2 mount + path prefix parameters are stored under. |
 | `setup.auth_mode`      | yes (default `userpass`) | Authentication mode: `userpass` or `kubernetes`.                       |
 | `setup.kubernetes_role`| when `kubernetes`   | Vault Kubernetes auth role bound to the agent's ServiceAccount.              |
 
-The KV path prefix is fixed to `secret/data/nullplatform` and the auth mounts are
-fixed to Vault's defaults (`auth/userpass`, `auth/kubernetes`).
+The KV path prefix defaults to `secret/data/nullplatform` and is configurable via
+`setup.namespace` (or the `VAULT_PATH_PREFIX` env var). It must include the KV v2
+`data/` segment. The auth mounts are fixed to Vault's defaults (`auth/userpass`,
+`auth/kubernetes`).
+
+> **Note:** the Vault policy examples below grant access to the default
+> `secret/data/nullplatform/*` (and `secret/metadata/nullplatform/*`) paths. If you
+> set a custom `setup.namespace`, adjust the policy paths to match it — the KV mount
+> and the `metadata/` counterpart of your configured `data/` path.
 
 ## Authentication
 

@@ -69,7 +69,7 @@ teardown() {
   assert_contains "$output" "ADDR=https://cfg-vault.example.com"
 }
 
-@test "vault setup: path_prefix is hardcoded to secret/data/nullplatform" {
+@test "vault setup: path_prefix defaults to secret/data/nullplatform when unset" {
   export VAULT_ADDR="https://vault.example.com"
   export VAULT_USERNAME="agent"
   export VAULT_PASSWORD="pw"
@@ -78,6 +78,52 @@ teardown() {
 
   assert_equal "$status" "0"
   assert_contains "$output" "PREFIX=secret/data/nullplatform"
+}
+
+@test "vault setup: path_prefix from PROVIDER_CONFIG (.setup.namespace)" {
+  export VAULT_USERNAME="agent"
+  export VAULT_PASSWORD="pw"
+  export PROVIDER_CONFIG='{"setup":{"address":"https://vault.example.com","namespace":"secret/data/team-x"}}'
+
+  run bash -c "$DEPS; source $SCRIPT && echo PREFIX=\$VAULT_PATH_PREFIX"
+
+  assert_equal "$status" "0"
+  assert_contains "$output" "PREFIX=secret/data/team-x"
+}
+
+@test "vault setup: path_prefix from VAULT_PATH_PREFIX env var" {
+  export VAULT_ADDR="https://vault.example.com"
+  export VAULT_USERNAME="agent"
+  export VAULT_PASSWORD="pw"
+  export VAULT_PATH_PREFIX="secret/data/from-env"
+
+  run bash -c "$DEPS; source $SCRIPT && echo PREFIX=\$VAULT_PATH_PREFIX"
+
+  assert_equal "$status" "0"
+  assert_contains "$output" "PREFIX=secret/data/from-env"
+}
+
+@test "vault setup: path_prefix from PROVIDER_CONFIG wins over VAULT_PATH_PREFIX env var" {
+  export VAULT_USERNAME="agent"
+  export VAULT_PASSWORD="pw"
+  export VAULT_PATH_PREFIX="secret/data/from-env"
+  export PROVIDER_CONFIG='{"setup":{"address":"https://vault.example.com","namespace":"secret/data/from-config"}}'
+
+  run bash -c "$DEPS; source $SCRIPT && echo PREFIX=\$VAULT_PATH_PREFIX"
+
+  assert_equal "$status" "0"
+  assert_contains "$output" "PREFIX=secret/data/from-config"
+}
+
+@test "vault setup: path_prefix trailing slash is trimmed" {
+  export VAULT_USERNAME="agent"
+  export VAULT_PASSWORD="pw"
+  export PROVIDER_CONFIG='{"setup":{"address":"https://vault.example.com","namespace":"secret/data/team-x/"}}'
+
+  run bash -c "$DEPS; source $SCRIPT && echo PREFIX=\$VAULT_PATH_PREFIX"
+
+  assert_equal "$status" "0"
+  assert_contains "$output" "PREFIX=secret/data/team-x"
 }
 
 @test "vault setup: unknown auth_mode fails" {

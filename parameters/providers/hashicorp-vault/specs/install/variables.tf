@@ -41,8 +41,10 @@ variable "instances" {
     Instances with enable_notification_channel=true also get their own agent API key +
     notification channel (anchored at the instance NRN). Fields:
       attributes                  — provider config matching the spec schema:
-                                      sensibility.applies_to plus setup.address / setup.auth_mode /
-                                      setup.kubernetes_role. auth_mode is "userpass" (default) or
+                                      sensibility.applies_to plus setup.address / setup.namespace /
+                                      setup.auth_mode / setup.kubernetes_role. namespace is the KV v2
+                                      mount + path prefix; leave it null to use the default
+                                      (secret/data/nullplatform). auth_mode is "userpass" (default) or
                                       "kubernetes"; kubernetes_role is only used (and required) when
                                       auth_mode = "kubernetes" — leave it null for userpass.
       enable_notification_channel — create the agent API key + notification channel (default false).
@@ -60,6 +62,7 @@ variable "instances" {
       })
       setup = object({
         address         = string
+        namespace       = optional(string)
         auth_mode       = optional(string, "userpass")
         kubernetes_role = optional(string)
       })
