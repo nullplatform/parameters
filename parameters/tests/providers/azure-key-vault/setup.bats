@@ -104,6 +104,20 @@ teardown() {
   [[ "$captured" != *"login --service-principal"* ]]
 }
 
+@test "azure-key-vault setup: skips service principal login when only some SP env vars are set" {
+  export AZURE_KEY_VAULT_NAME="my-vault"
+  export AZURE_CLIENT_ID="client-123"
+  # AZURE_CLIENT_SECRET and AZURE_TENANT_ID intentionally left unset — the
+  # guard requires all three, so this must fall through to the default
+  # credential chain (no az call at all) instead of failing or half-logging-in.
+  export MOCK_AZ_ACCOUNT_SHOW_EXIT=1
+
+  run bash -c "$DEPS; source $SCRIPT"
+
+  assert_equal "$status" "0"
+  [ ! -s "$AZ_LOG" ]
+}
+
 @test "azure-key-vault setup: fails with troubleshooting when service principal login fails" {
   export AZURE_KEY_VAULT_NAME="my-vault"
   export AZURE_CLIENT_ID="client-123"
