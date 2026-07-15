@@ -32,10 +32,15 @@ if [ -z "$AZ_VAULT_NAME" ]; then
   exit 1
 fi
 
-# Service-principal login (optional). The Azure CLI does not read the
-# AZURE_CLIENT_ID/AZURE_CLIENT_SECRET/AZURE_TENANT_ID env vars automatically, so
-# authenticate explicitly when they are present. Skipped when a session already
-# exists (managed identity or a prior `az login`).
+# Service-principal login (optional; see the header note above). Skipped when a
+# session already exists (managed identity or a prior `az login`).
+#
+# The secret must go on argv: `az` requires --password for non-interactive
+# service-principal login (it does not read it from stdin — it errors "specify
+# both username and password in non-interactive mode"), so it is briefly visible
+# in the process table. For stronger isolation prefer certificate-based SP auth
+# or OIDC/workload-identity federation, or run the agent in a single-tenant
+# process. See docs/azure-rbac.md.
 if [ -n "${AZURE_CLIENT_ID:-}" ] && [ -n "${AZURE_CLIENT_SECRET:-}" ] && [ -n "${AZURE_TENANT_ID:-}" ]; then
   if ! az account show >/dev/null 2>&1; then
     if ! az login --service-principal \

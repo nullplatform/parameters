@@ -68,3 +68,24 @@ Applying this module requires the tofu caller to have directory permissions to
 create app registrations and `Owner` / `User Access Administrator` on the vault
 scope to create role assignments, plus a subscription (`ARM_SUBSCRIPTION_ID`) for
 the `azurerm` provider.
+
+---
+
+## Security notes
+
+- **State holds a live secret.** `client_secret` is marked `sensitive` (redacted
+  from plan/apply output), but Tofu still writes it to state in plaintext. Use a
+  state backend that is encrypted at rest with tightly restricted access for
+  `specs/requirements/` (mirror the repo's `backend.tfbackend.example`
+  convention). Rotate the secret by re-applying (`secret_end_date` bounds its
+  lifetime; the default is ~2 years).
+- **Secret on the CLI process line.** The agent's `setup` passes the secret to
+  `az login --service-principal --password` on argv, because the Azure CLI does
+  not accept the service-principal secret on stdin for non-interactive login. It
+  is therefore briefly visible in the process table to co-located principals. To
+  avoid a plaintext secret entirely, prefer **certificate-based** service-principal
+  auth (only a file path appears on argv) or **OIDC / workload-identity
+  federation** (no secret at all) where the agent's runtime supports it;
+  otherwise run the agent in an isolated, single-tenant process/container.
+- **Least privilege.** Assign only `Key Vault Secrets Officer` scoped per vault
+  (as this module does). Do not grant vault-management roles.
