@@ -18,18 +18,52 @@ set -euo pipefail
 # how the token was obtained.
 #
 # The KV path prefix defaults to `secret/data/nullplatform` but is operator-
-# configurable via .setup.namespace (or the VAULT_PATH_PREFIX env var) — it is the
-# KV v2 mount + path prefix, not a Vault Enterprise namespace. Auth mounts are
-# hardcoded to Vault's defaults (auth/userpass, auth/kubernetes). VAULT_ADDR is
-# operator-configurable.
+# configurable via .setup.namespace (or the VAULT_PATH_PREFIX env var). It holds
+# the KV v2 path prefix and, on Vault Enterprise, may be a Vault namespace path
+# terminated by the KV `data` segment: `<namespace-path>/data` (e.g. `admin/ns/data`).
+# The auth mounts are hardcoded to Vault's defaults (auth/userpass, auth/kubernetes),
+# and VAULT_ADDR is operator-configurable.
+#
+# On Vault Enterprise, credentials/roles are scoped to the namespace, so the login
+# must target it too — otherwise Vault returns "access denied". We derive the
+# namespace from VAULT_PATH_PREFIX (see below) and prefix the login URL with it,
+# matching how store/retrieve/delete embed the prefix into their request paths.
+# Prefixes without a trailing `/data` carry no namespace, so login stays on the
+# root namespace (backward compatible).
 #
 # Exports: VAULT_ADDR, VAULT_TOKEN, VAULT_PATH_PREFIX
 
+VAULT_DEFAULT_PATH_PREFIX="secret/data/nullplatform"
+
 VAULT_ADDR=$(get_config_value --env VAULT_ADDR --provider '.setup.address')
 VAULT_AUTH_MODE=$(get_config_value --env VAULT_AUTH_MODE --provider '.setup.auth_mode' --default "userpass")
-VAULT_PATH_PREFIX=$(get_config_value --env VAULT_PATH_PREFIX --provider '.setup.namespace' --default "secret/data/nullplatform")
+VAULT_PATH_PREFIX=$(get_config_value --env VAULT_PATH_PREFIX --provider '.setup.namespace' --default "$VAULT_DEFAULT_PATH_PREFIX")
 # Trim a trailing slash so store/retrieve/delete don't compose a double slash.
 VAULT_PATH_PREFIX="${VAULT_PATH_PREFIX%/}"
+
+# Derive the Vault Enterprise namespace (if any) from the path prefix. We only
+# treat it as namespaced when the prefix ENDS in the KV v2 `/data` segment
+# (e.g. admin/ns/data -> namespace admin/ns): store appends the parameter path
+# after `data`, so the operator configures the prefix up to `<namespace>/data`.
+#
+# A `data` segment in the MIDDLE (secret/data/nullplatform, secret/data/team-x,
+# kv/data/foo) is a plain KV mount + subpath in the ROOT namespace, textually
+# indistinguishable from a namespace, so we must NOT derive one — doing so would
+# break login for existing non-Enterprise deployments. Hence: trailing `/data`
+# only. (Matching on the `/data` suffix is segment-safe: `.../database` does not
+# end in `/data`.)
+VAULT_NAMESPACE=""
+case "$VAULT_PATH_PREFIX" in
+  */data) VAULT_NAMESPACE="${VAULT_PATH_PREFIX%/data}" ;;
+esac
+
+# API base for the login call — namespace-prefixed on Vault Enterprise, plain
+# otherwise. store/retrieve/delete need no equivalent: the namespace is already
+# embedded in VAULT_PATH_PREFIX, which they compose into their request paths.
+VAULT_LOGIN_BASE="$VAULT_ADDR/v1"
+if [ -n "$VAULT_NAMESPACE" ]; then
+  VAULT_LOGIN_BASE="$VAULT_ADDR/v1/$VAULT_NAMESPACE"
+fi
 
 if [ -z "$VAULT_ADDR" ]; then
   log error "❌ Vault address not configured"
@@ -75,7 +109,7 @@ case "$VAULT_AUTH_MODE" in
 
     # URL-encode the username — it is interpolated as a path segment of the login URL.
     VAULT_USERNAME_ENC=$(jq -rn --arg u "$VAULT_USERNAME" '$u | @uri')
-    LOGIN_URL="$VAULT_ADDR/v1/auth/userpass/login/$VAULT_USERNAME_ENC"
+    LOGIN_URL="$VAULT_LOGIN_BASE/auth/userpass/login/$VAULT_USERNAME_ENC"
     LOGIN_PAYLOAD=$(jq -nc --arg password "$VAULT_PASSWORD" '{password: $password}')
     ;;
 
@@ -111,7 +145,7 @@ case "$VAULT_AUTH_MODE" in
     fi
 
     VAULT_K8S_JWT=$(<"$VAULT_K8S_JWT_PATH")
-    LOGIN_URL="$VAULT_ADDR/v1/auth/kubernetes/login"
+    LOGIN_URL="$VAULT_LOGIN_BASE/auth/kubernetes/login"
     LOGIN_PAYLOAD=$(jq -nc --arg role "$VAULT_K8S_ROLE" --arg jwt "$VAULT_K8S_JWT" '{role: $role, jwt: $jwt}')
     ;;
 

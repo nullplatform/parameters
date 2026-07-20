@@ -52,7 +52,7 @@
           "namespace": {
             "type": "string",
             "title": "Namespace",
-            "description": "Namespace and path prefix under which parameters are stored. Must include the KV v2 `data/` segment (e.g. secret/data/nullplatform).",
+            "description": "Namespace and path prefix under which parameters are stored. Must include the KV v2 `data/` segment (e.g. secret/data/nullplatform). On Vault Enterprise, set it to the namespace path terminated by `data` (e.g. admin/ns/data) — the login targets the namespace and only a trailing `/data` is treated as a namespace.",
             "order": 2,
             "default": "secret/data/nullplatform"
           },
