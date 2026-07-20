@@ -208,6 +208,99 @@ teardown() {
   assert_contains "$captured" "login/ns%2Fagent"
 }
 
+@test "vault setup: userpass login is NOT namespace-prefixed for the default prefix" {
+  export VAULT_ADDR="https://vault.example.com"
+  export VAULT_USERNAME="agent"
+  export VAULT_PASSWORD="pw"
+  # default prefix (secret/data/nullplatform) → root namespace, no prefix
+
+  run bash -c "$DEPS; source $SCRIPT"
+
+  assert_equal "$status" "0"
+  captured=$(cat "$CURL_LOG")
+  assert_contains "$captured" "https://vault.example.com/v1/auth/userpass/login/agent"
+}
+
+@test "vault setup: userpass login is prefixed with the Vault namespace (prefix ends in /data)" {
+  export VAULT_USERNAME="agent"
+  export VAULT_PASSWORD="pw"
+  # admin/ns/data → Vault namespace = admin/ns
+  export PROVIDER_CONFIG='{"setup":{"address":"https://vault.example.com","namespace":"admin/ns/data"}}'
+
+  run bash -c "$DEPS; source $SCRIPT"
+
+  assert_equal "$status" "0"
+  captured=$(cat "$CURL_LOG")
+  assert_contains "$captured" "https://vault.example.com/v1/admin/ns/auth/userpass/login/agent"
+}
+
+@test "vault setup: VAULT_PATH_PREFIX export keeps the trailing /data segment when a namespace is derived" {
+  export VAULT_USERNAME="agent"
+  export VAULT_PASSWORD="pw"
+  # Namespace derivation must not mutate VAULT_PATH_PREFIX itself — store/retrieve/
+  # delete compose their Vault paths from the full prefix (including /data).
+  export PROVIDER_CONFIG='{"setup":{"address":"https://vault.example.com","namespace":"admin/ns/data"}}'
+
+  run bash -c "$DEPS; source $SCRIPT && echo PREFIX=\$VAULT_PATH_PREFIX"
+
+  assert_equal "$status" "0"
+  assert_contains "$output" "PREFIX=admin/ns/data"
+}
+
+@test "vault setup: userpass login is NOT namespace-prefixed for a non-default root prefix (custom subpath, no Enterprise namespace)" {
+  export VAULT_USERNAME="agent"
+  export VAULT_PASSWORD="pw"
+  # secret/data/team-x is a plain KV mount + subpath in the root namespace — the
+  # `data` segment is in the MIDDLE, so no namespace is derived (backward compat).
+  export PROVIDER_CONFIG='{"setup":{"address":"https://vault.example.com","namespace":"secret/data/team-x"}}'
+
+  run bash -c "$DEPS; source $SCRIPT"
+
+  assert_equal "$status" "0"
+  captured=$(cat "$CURL_LOG")
+  assert_contains "$captured" "https://vault.example.com/v1/auth/userpass/login/agent"
+}
+
+@test "vault setup: userpass login is NOT namespace-prefixed when a subpath follows the data segment" {
+  export VAULT_USERNAME="agent"
+  export VAULT_PASSWORD="pw"
+  # Only a TRAILING /data derives a namespace; admin/ns/data/foo has a subpath
+  # after data, so it is treated as a root KV path (no namespace prefix).
+  export PROVIDER_CONFIG='{"setup":{"address":"https://vault.example.com","namespace":"admin/ns/data/foo"}}'
+
+  run bash -c "$DEPS; source $SCRIPT"
+
+  assert_equal "$status" "0"
+  captured=$(cat "$CURL_LOG")
+  assert_contains "$captured" "https://vault.example.com/v1/auth/userpass/login/agent"
+}
+
+@test "vault setup: userpass login namespace does not treat 'database' as the data segment" {
+  export VAULT_USERNAME="agent"
+  export VAULT_PASSWORD="pw"
+  export PROVIDER_CONFIG='{"setup":{"address":"https://vault.example.com","namespace":"myns/database/x"}}'
+
+  run bash -c "$DEPS; source $SCRIPT"
+
+  assert_equal "$status" "0"
+  captured=$(cat "$CURL_LOG")
+  # 'database' is not the KV 'data' segment → no namespace derived → root login
+  assert_contains "$captured" "https://vault.example.com/v1/auth/userpass/login/agent"
+}
+
+@test "vault setup: kubernetes login is prefixed with the Vault namespace" {
+  export VAULT_AUTH_MODE="kubernetes"
+  export VAULT_K8S_ROLE="nullplatform-agent"
+  export VAULT_K8S_JWT_PATH="$SA_TOKEN_FILE"
+  export PROVIDER_CONFIG='{"setup":{"address":"https://vault.example.com","auth_mode":"kubernetes","kubernetes_role":"nullplatform-agent","namespace":"admin/ns/data"}}'
+
+  run bash -c "$DEPS; source $SCRIPT"
+
+  assert_equal "$status" "0"
+  captured=$(cat "$CURL_LOG")
+  assert_contains "$captured" "https://vault.example.com/v1/admin/ns/auth/kubernetes/login"
+}
+
 @test "vault setup: userpass login without a token fails" {
   export VAULT_ADDR="https://vault.example.com"
   export VAULT_USERNAME="agent"
