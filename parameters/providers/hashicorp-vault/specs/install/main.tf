@@ -1,5 +1,5 @@
 module "hashicorp_vault_spec" {
-  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/parameter_storage_definition?ref=v6.3.0"
+  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/parameter_storage_definition?ref=v6.6.0"
 
   nrn                                      = var.nrn
   np_api_key                               = var.np_api_key
@@ -10,7 +10,7 @@ module "hashicorp_vault_spec" {
 }
 
 module "hashicorp_vault_api_keys" {
-  source   = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/api_key?ref=v6.3.0"
+  source   = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/api_key?ref=v6.6.0"
   for_each = { for key, instance in var.instances : key => instance if instance.enable_notification_channel }
 
   type               = "agent"
@@ -19,7 +19,7 @@ module "hashicorp_vault_api_keys" {
 }
 
 module "hashicorp_vault_configuration" {
-  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/parameter_storage_configuration?ref=v6.3.0"
+  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/parameter_storage_configuration?ref=v6.6.0"
 
   for_each = var.instances
 
@@ -33,7 +33,7 @@ module "hashicorp_vault_configuration" {
 }
 
 module "hashicorp_vault_channels" {
-  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/parameter_storage_definition_agent_association?ref=v6.3.0"
+  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/parameter_storage_definition_agent_association?ref=v6.6.0"
 
   for_each = { for key, instance in var.instances : key => instance if instance.enable_notification_channel }
 
