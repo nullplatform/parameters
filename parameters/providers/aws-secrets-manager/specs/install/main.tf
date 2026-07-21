@@ -1,5 +1,5 @@
 module "secrets_manager_spec" {
-  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/parameter_storage_definition?ref=v6.2.0"
+  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/parameter_storage_definition?ref=v6.6.0"
 
   nrn                                      = var.nrn
   np_api_key                               = var.np_api_key
@@ -11,7 +11,7 @@ module "secrets_manager_spec" {
 
 module "secrets_manager_api_keys" {
 
-  source   = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/api_key?ref=v6.1.0"
+  source   = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/api_key?ref=v6.6.0"
   for_each = { for key, instance in var.instances : key => instance if instance.enable_notification_channel }
 
   type               = "agent"
@@ -20,7 +20,7 @@ module "secrets_manager_api_keys" {
 }
 
 module "secrets_manager_configuration" {
-  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/parameter_storage_configuration?ref=v6.2.0"
+  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/parameter_storage_configuration?ref=v6.6.0"
 
   for_each = var.instances
 
@@ -34,7 +34,7 @@ module "secrets_manager_configuration" {
 }
 
 module "secrets_manager_channels" {
-  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/parameter_storage_definition_agent_association?ref=v6.2.0"
+  source = "git::https://github.com/nullplatform/tofu-modules.git//nullplatform/parameter_storage_definition_agent_association?ref=v6.6.0"
 
   for_each = { for key, instance in var.instances : key => instance if instance.enable_notification_channel }
 
