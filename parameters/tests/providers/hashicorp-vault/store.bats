@@ -15,14 +15,17 @@ setup() {
 
   mkdir -p "$BATS_TEST_TMPDIR/bin"
 
-  # Mock curl
+  # Mock curl. store passes -w "\n%{http_code}", so append the HTTP status on a
+  # trailing line; store validates it (curl -s alone exits 0 even on HTTP errors).
   export CURL_LOG="$BATS_TEST_TMPDIR/curl.log"
-  cat > "$BATS_TEST_TMPDIR/bin/curl" << EOF
+  cat > "$BATS_TEST_TMPDIR/bin/curl" << 'EOF'
 #!/bin/bash
-echo "ARGS: \$@" >> "$CURL_LOG"
-if [ "\${MOCK_CURL_EXIT:-0}" -ne 0 ]; then exit \$MOCK_CURL_EXIT; fi
-# Vault KV v2 returns the new version number in response body
-echo '{"data":{"created_time":"2026-06-23T00:00:00Z","version":3,"deletion_time":"","destroyed":false}}'
+echo "ARGS: $@" >> "$CURL_LOG"
+if [ "${MOCK_CURL_EXIT:-0}" -ne 0 ]; then exit "$MOCK_CURL_EXIT"; fi
+# Vault KV v2 returns the new version number in the response body.
+default_body='{"data":{"created_time":"2026-06-23T00:00:00Z","version":3,"deletion_time":"","destroyed":false}}'
+printf '%s' "${MOCK_HTTP_BODY:-$default_body}"
+printf '\n%s' "${MOCK_HTTP_STATUS:-200}"
 EOF
   chmod +x "$BATS_TEST_TMPDIR/bin/curl"
 
@@ -107,8 +110,40 @@ EOF
   run bash -c "$DEPS; MOCK_CURL_EXIT=22 source $SCRIPT"
 
   [ "$status" -ne 0 ]
-  assert_contains "$output" "❌ Failed to store parameter in Vault"
+  assert_contains "$output" "❌ Network error storing parameter in Vault"
   assert_contains "$output" "💡 Possible causes:"
+}
+
+@test "vault store: fails when Vault returns a non-2xx status (silent-write regression)" {
+  # Regression: a failed KV write (wrong mount / namespace / permission) must NOT
+  # be reported as success. curl -s exits 0 on HTTP 4xx, so store must inspect the
+  # HTTP status, not just curl's exit code.
+  run bash -c "$DEPS; MOCK_HTTP_STATUS=404 MOCK_HTTP_BODY='{\"errors\":[]}' source $SCRIPT"
+
+  [ "$status" -ne 0 ]
+  assert_contains "$output" "❌ Vault write failed with HTTP 404"
+  assert_contains "$output" "🔧 How to fix:"
+}
+
+@test "vault store: fails when Vault returns 403 (no write permission)" {
+  run bash -c "$DEPS; MOCK_HTTP_STATUS=403 MOCK_HTTP_BODY='{\"errors\":[\"permission denied\"]}' source $SCRIPT"
+
+  [ "$status" -ne 0 ]
+  assert_contains "$output" "❌ Vault write failed with HTTP 403"
+}
+
+@test "vault store: applies the Vault namespace as a URL prefix" {
+  export VAULT_NAMESPACE="admin/eks-null-alfa-136"
+
+  run bash -c "$DEPS; source $SCRIPT"
+
+  assert_equal "$status" "0"
+  captured=$(cat "$CURL_LOG")
+  assert_contains "$captured" "https://vault.example.com/v1/admin/eks-null-alfa-136/secret/data/nullplatform/organization=acme-1255165411"
+  # The namespace is NOT baked into the external_id (it comes from current config).
+  external_id=$(echo "$output" | jq -r '.external_id')
+  assert_contains "$external_id" "secret/data/nullplatform/organization=acme-1255165411"
+  [[ "$external_id" != admin/* ]]
 }
 
 @test "vault store: external_id embeds a custom VAULT_PATH_PREFIX" {

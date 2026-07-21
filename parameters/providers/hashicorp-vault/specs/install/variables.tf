@@ -42,8 +42,10 @@ variable "instances" {
     notification channel (anchored at the instance NRN). Fields:
       attributes                  — provider config matching the spec schema:
                                       sensibility.applies_to plus setup.address / setup.namespace /
-                                      setup.auth_mode / setup.kubernetes_role. namespace is the KV v2
-                                      mount + path prefix; leave it null to use the default
+                                      setup.path_prefix / setup.auth_mode / setup.kubernetes_role.
+                                      namespace is the Vault Enterprise namespace (leave null for the
+                                      root namespace on Vault OSS). path_prefix is the KV v2
+                                      `<mount>/data/<subpath>` prefix; leave it null to use the default
                                       (secret/data/nullplatform). auth_mode is "userpass" (default) or
                                       "kubernetes"; kubernetes_role is only used (and required) when
                                       auth_mode = "kubernetes" — leave it null for userpass.
@@ -63,6 +65,7 @@ variable "instances" {
       setup = object({
         address         = string
         namespace       = optional(string)
+        path_prefix     = optional(string)
         auth_mode       = optional(string, "userpass")
         kubernetes_role = optional(string)
       })

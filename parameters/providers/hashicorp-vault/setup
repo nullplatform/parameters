@@ -17,49 +17,69 @@ set -euo pipefail
 # store/retrieve/delete keep using the X-Vault-Token header with no knowledge of
 # how the token was obtained.
 #
-# The KV path prefix defaults to `secret/data/nullplatform` but is operator-
-# configurable via .setup.namespace (or the VAULT_PATH_PREFIX env var). It holds
-# the KV v2 path prefix and, on Vault Enterprise, may be a Vault namespace path
-# terminated by the KV `data` segment: `<namespace-path>/data` (e.g. `admin/ns/data`).
-# The auth mounts are hardcoded to Vault's defaults (auth/userpass, auth/kubernetes),
-# and VAULT_ADDR is operator-configurable.
+# Two independent config axes:
+#
+#   VAULT_NAMESPACE   The Vault Enterprise namespace (e.g. `admin/eks-null-alfa-136`).
+#                     Operator-configurable via .setup.namespace / VAULT_NAMESPACE.
+#                     Empty means the root namespace — backward compatible with
+#                     non-Enterprise deployments. It is applied as a URL prefix
+#                     (`$VAULT_ADDR/v1/<namespace>/...`) on login AND on every
+#                     store/retrieve/delete request; Vault resolves the leading
+#                     path segments to the namespace before routing to the mount.
+#
+#   VAULT_PATH_PREFIX The KV v2 path prefix RELATIVE to the namespace, i.e. the
+#                     full `<mount>/data/<subpath>` (e.g. `secret/data/nullplatform`).
+#                     It MUST include the mount and the KV v2 `data` segment.
+#                     Defaults to `secret/data/nullplatform`. store embeds it in
+#                     the external_id, so references survive a path_prefix change.
+#
+# The two are kept separate because a KV v2 path inside a namespace is
+# `<namespace>/<mount>/data/<subpath>` — the mount name sits between the namespace
+# and `data`, so a single field cannot encode both without ambiguity (which broke
+# read/write on Enterprise namespaces). The auth mounts are hardcoded to Vault's
+# defaults (auth/userpass, auth/kubernetes); VAULT_ADDR is operator-configurable.
 #
 # On Vault Enterprise, credentials/roles are scoped to the namespace, so the login
-# must target it too — otherwise Vault returns "access denied". We derive the
-# namespace from VAULT_PATH_PREFIX (see below) and prefix the login URL with it,
-# matching how store/retrieve/delete embed the prefix into their request paths.
-# Prefixes without a trailing `/data` carry no namespace, so login stays on the
-# root namespace (backward compatible).
+# must target it too — otherwise Vault returns "access denied".
 #
-# Exports: VAULT_ADDR, VAULT_TOKEN, VAULT_PATH_PREFIX
+# Exports: VAULT_ADDR, VAULT_TOKEN, VAULT_NAMESPACE, VAULT_PATH_PREFIX
 
 VAULT_DEFAULT_PATH_PREFIX="secret/data/nullplatform"
 
 VAULT_ADDR=$(get_config_value --env VAULT_ADDR --provider '.setup.address')
 VAULT_AUTH_MODE=$(get_config_value --env VAULT_AUTH_MODE --provider '.setup.auth_mode' --default "userpass")
-VAULT_PATH_PREFIX=$(get_config_value --env VAULT_PATH_PREFIX --provider '.setup.namespace' --default "$VAULT_DEFAULT_PATH_PREFIX")
-# Trim a trailing slash so store/retrieve/delete don't compose a double slash.
+VAULT_NAMESPACE=$(get_config_value --env VAULT_NAMESPACE --provider '.setup.namespace' --default "")
+VAULT_PATH_PREFIX=$(get_config_value --env VAULT_PATH_PREFIX --provider '.setup.path_prefix' --default "$VAULT_DEFAULT_PATH_PREFIX")
+# Trim surrounding slashes so URL composition never doubles them.
+VAULT_NAMESPACE="${VAULT_NAMESPACE#/}"
+VAULT_NAMESPACE="${VAULT_NAMESPACE%/}"
 VAULT_PATH_PREFIX="${VAULT_PATH_PREFIX%/}"
 
-# Derive the Vault Enterprise namespace (if any) from the path prefix. We only
-# treat it as namespaced when the prefix ENDS in the KV v2 `/data` segment
-# (e.g. admin/ns/data -> namespace admin/ns): store appends the parameter path
-# after `data`, so the operator configures the prefix up to `<namespace>/data`.
-#
-# A `data` segment in the MIDDLE (secret/data/nullplatform, secret/data/team-x,
-# kv/data/foo) is a plain KV mount + subpath in the ROOT namespace, textually
-# indistinguishable from a namespace, so we must NOT derive one — doing so would
-# break login for existing non-Enterprise deployments. Hence: trailing `/data`
-# only. (Matching on the `/data` suffix is segment-safe: `.../database` does not
-# end in `/data`.)
-VAULT_NAMESPACE=""
-case "$VAULT_PATH_PREFIX" in
-  */data) VAULT_NAMESPACE="${VAULT_PATH_PREFIX%/data}" ;;
-esac
+# Defense-in-depth: both values are interpolated raw into request URLs (the login
+# call and every store/retrieve/delete). They are multi-segment paths where `/` is
+# significant, so we validate rather than URL-encode (unlike the single-segment
+# username, which is @uri-encoded): allow only Vault-legal path characters and
+# reject `..` segments that could rewrite the request path. Values are operator
+# config, so this guards against misconfiguration, not attacker input.
+validate_vault_path_config() {
+  local name="$1" value="$2"
+  [ -z "$value" ] && return 0
+  if [[ "$value" == *".."* ]] || [[ "$value" =~ [^A-Za-z0-9._/-] ]]; then
+    log error "❌ Invalid Vault $name: '$value'"
+    log error ""
+    log error "💡 Possible causes:"
+    log error "   • .setup.$name contains characters outside [A-Za-z0-9._/-] or a '..' segment"
+    log error ""
+    log error "🔧 How to fix:"
+    log error "   • Use only letters, digits, '.', '_', '-' and '/' path separators"
+    exit 1
+  fi
+}
+validate_vault_path_config namespace "$VAULT_NAMESPACE"
+validate_vault_path_config path_prefix "$VAULT_PATH_PREFIX"
 
 # API base for the login call — namespace-prefixed on Vault Enterprise, plain
-# otherwise. store/retrieve/delete need no equivalent: the namespace is already
-# embedded in VAULT_PATH_PREFIX, which they compose into their request paths.
+# otherwise. store/retrieve/delete compose the same namespace prefix themselves.
 VAULT_LOGIN_BASE="$VAULT_ADDR/v1"
 if [ -n "$VAULT_NAMESPACE" ]; then
   VAULT_LOGIN_BASE="$VAULT_ADDR/v1/$VAULT_NAMESPACE"
@@ -198,4 +218,4 @@ if [ -z "$VAULT_TOKEN" ]; then
   exit 1
 fi
 
-export VAULT_ADDR VAULT_TOKEN VAULT_PATH_PREFIX
+export VAULT_ADDR VAULT_TOKEN VAULT_NAMESPACE VAULT_PATH_PREFIX

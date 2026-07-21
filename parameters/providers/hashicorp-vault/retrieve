@@ -9,14 +9,19 @@ set -euo pipefail
 #   - Any other HTTP status or network error → exit 1 with troubleshooting
 #
 # Required env: EXTERNAL_ID, VAULT_ADDR, VAULT_TOKEN
+# Optional env: VAULT_NAMESPACE (Vault Enterprise namespace, applied as a URL prefix)
 
 # EXTERNAL_ID_PATH and EXTERNAL_ID_VERSION are set by build_context. The path is
-# the full, self-contained Vault path (the KV prefix was embedded by store), so it
+# the full, self-contained KV path (the KV prefix was embedded by store), so it
 # is used verbatim — never recomposed against the current VAULT_PATH_PREFIX. This
-# keeps references valid across setup.namespace changes.
+# keeps references valid across setup.path_prefix changes. The Vault namespace is
+# NOT part of the path; it is applied from the current config as a URL prefix.
 VAULT_PATH="$EXTERNAL_ID_PATH"
 
-URL="$VAULT_ADDR/v1/$VAULT_PATH"
+NS_PREFIX=""
+[ -n "${VAULT_NAMESPACE:-}" ] && NS_PREFIX="${VAULT_NAMESPACE}/"
+
+URL="$VAULT_ADDR/v1/${NS_PREFIX}${VAULT_PATH}"
 if [ -n "${EXTERNAL_ID_VERSION:-}" ]; then
   URL="${URL}?version=${EXTERNAL_ID_VERSION}"
 fi
@@ -53,7 +58,7 @@ case "$HTTP_STATUS" in
     fi
     log error ""
     log error "🔧 How to fix:"
-    log error "   • Verify: curl -s -H \"X-Vault-Token: \$VAULT_TOKEN\" $VAULT_ADDR/v1/$VAULT_PATH"
+    log error "   • Verify: curl -s -H \"X-Vault-Token: \$VAULT_TOKEN\" $VAULT_ADDR/v1/${NS_PREFIX}${VAULT_PATH}"
     log error "   • If genuinely missing, the parameter value needs to be re-stored"
     exit 1
     ;;

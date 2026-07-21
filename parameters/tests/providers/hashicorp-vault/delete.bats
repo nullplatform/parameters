@@ -95,6 +95,16 @@ EOF
   assert_contains "$captured" "https://vault.example.com/v1/secret/data/nullplatform/abc-123"
 }
 
+@test "vault delete: applies the Vault namespace as a URL prefix" {
+  export VAULT_NAMESPACE="admin/eks-null-alfa-136"
+
+  run bash -c "$DEPS; MOCK_HTTP_STATUS=204 source $SCRIPT"
+
+  assert_equal "$status" "0"
+  captured=$(cat "$CURL_LOG")
+  assert_contains "$captured" "https://vault.example.com/v1/admin/eks-null-alfa-136/secret/data/nullplatform/abc-123"
+}
+
 @test "vault delete: uses external_id path verbatim, ignoring current VAULT_PATH_PREFIX" {
   # Regression: simulates setup.namespace being reconfigured AFTER this secret was
   # stored. The full path lives in the external_id, so it must win over the current

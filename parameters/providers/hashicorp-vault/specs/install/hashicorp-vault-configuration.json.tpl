@@ -52,15 +52,21 @@
           "namespace": {
             "type": "string",
             "title": "Namespace",
-            "description": "Namespace and path prefix under which parameters are stored. Must include the KV v2 `data/` segment (e.g. secret/data/nullplatform). On Vault Enterprise, set it to the namespace path terminated by `data` (e.g. admin/ns/data) — the login targets the namespace and only a trailing `/data` is treated as a namespace.",
-            "order": 2,
+            "description": "Vault Enterprise namespace the parameters live under (e.g. admin/eks-null-alfa-136). Leave empty for the root namespace (Vault OSS / single-namespace). The login and every read/write target this namespace.",
+            "order": 2
+          },
+          "path_prefix": {
+            "type": "string",
+            "title": "KV path prefix",
+            "description": "KV v2 path prefix (relative to the namespace) parameters are stored under. Must be the full `<mount>/data/<subpath>` including the mount name and the KV v2 `data` segment (e.g. secret/data/nullplatform).",
+            "order": 3,
             "default": "secret/data/nullplatform"
           },
           "auth_mode": {
             "type": "string",
             "title": "Authentication mode",
             "description": "How the nullplatform agent authenticates to Vault.",
-            "order": 3,
+            "order": 4,
             "default": "userpass",
             "oneOf": [
               { "const": "userpass",   "title": "Username and password" },
@@ -71,7 +77,7 @@
             "type": "string",
             "title": "Vault Kubernetes role",
             "description": "Name of the Vault Kubernetes auth role bound to the agent's ServiceAccount. Required when the authentication mode is Kubernetes.",
-            "order": 4
+            "order": 5
           }
         },
         "allOf": [
@@ -96,6 +102,10 @@
         {
           "type": "Control",
           "scope": "#/properties/setup/properties/namespace"
+        },
+        {
+          "type": "Control",
+          "scope": "#/properties/setup/properties/path_prefix"
         },
         {
           "type": "Control",

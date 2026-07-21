@@ -8,9 +8,9 @@ This document describes the `parameters/providers/hashicorp-vault/` implementati
 
 | Step | What happens                                                                          |
 |------|---------------------------------------------------------------------------------------|
-| `setup`     | Reads `VAULT_ADDR`, `VAULT_AUTH_MODE` (default `userpass`) and the mode's inputs, plus `VAULT_PATH_PREFIX` (default `secret/data/nullplatform`). On Vault Enterprise, derives the Vault namespace from `VAULT_PATH_PREFIX` when it ends in the KV `data` segment (e.g. `admin/ns/data` → `admin/ns`; a `data` segment in the middle is a root-namespace KV path and derives nothing) and prefixes the login URL with it — credentials are namespace-scoped, so a root login would be denied. Authenticates against Vault and exports the derived short-lived token as `VAULT_TOKEN`. Fails fast if address or credentials/identity are missing. |
-| `store`     | Composes the canonical path via `build_external_id` and prepends `VAULT_PATH_PREFIX`, so the `external_id` is the full, self-contained Vault path. POSTs to `$VAULT_ADDR/v1/<full_path>` with a JSON payload. Captures the new version number from Vault's response. Returns `external_id = <VAULT_PATH_PREFIX>/<path>#<version>`. |
-| `retrieve`  | Splits `EXTERNAL_ID` into path + version. GETs `$VAULT_ADDR/v1/<full_path>?version=<N>` using the path **verbatim** (the KV prefix is already embedded — never recomposed against the current `VAULT_PATH_PREFIX`, so a later `setup.namespace` change can't orphan the reference). Returns `{value}` or `{value: "value not found"}`. |
+| `setup`     | Reads `VAULT_ADDR`, `VAULT_AUTH_MODE` (default `userpass`) and the mode's inputs, plus two independent path axes: `VAULT_NAMESPACE` (the Vault Enterprise namespace, empty = root) and `VAULT_PATH_PREFIX` (the KV v2 `<mount>/data/<subpath>` prefix, default `secret/data/nullplatform`). When a namespace is set, prefixes the login URL with it — credentials are namespace-scoped, so a root login would be denied. Authenticates against Vault and exports the derived short-lived token as `VAULT_TOKEN` plus `VAULT_NAMESPACE`. Fails fast if address or credentials/identity are missing. |
+| `store`     | Composes the canonical path via `build_external_id` and prepends `VAULT_PATH_PREFIX`, so the `external_id` is the full, self-contained KV path (the namespace is applied separately as a URL prefix, not embedded). POSTs to `$VAULT_ADDR/v1/<namespace>/<full_path>` with a JSON payload. **Validates the HTTP status** (curl `-s` exits 0 on HTTP errors, so a failed write must not be reported as success). Captures the new version number from Vault's response. Returns `external_id = <VAULT_PATH_PREFIX>/<path>#<version>`. |
+| `retrieve`  | Splits `EXTERNAL_ID` into path + version. GETs `$VAULT_ADDR/v1/<namespace>/<full_path>?version=<N>` using the path **verbatim** (the KV prefix is already embedded — never recomposed against the current `VAULT_PATH_PREFIX`, so a later `setup.path_prefix` change can't orphan the reference). The namespace comes from the current config. Returns `{value}` or `{value: "value not found"}`. |
 | `delete`    | Parses path from external_id. DELETEs the metadata endpoint (KV v2) — removes all versions. Idempotent. |
 | `notify`    | Not implemented — dispatcher returns default `{success: true}`. |
 
@@ -51,9 +51,11 @@ plus the version:
 <VAULT_PATH_PREFIX>/<canonical_path>#<version_id>
 ```
 
-Embedding the prefix makes the `external_id` self-contained: `retrieve`/`delete`
-resolve it verbatim, so reconfiguring `setup.namespace` never orphans previously
-stored references.
+Embedding the KV prefix makes the `external_id` self-contained: `retrieve`/`delete`
+resolve it verbatim, so reconfiguring `setup.path_prefix` never orphans previously
+stored references. (The Vault namespace is applied from the current config as a URL
+prefix and is deliberately not embedded — moving to a different namespace is a
+migration, not a config tweak.)
 
 For Vault KV v2, `version_id` is **the literal integer version number returned by Vault** in `.data.version` — we do not invent or normalize it. Real example:
 

@@ -9,11 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Prefix the HashiCorp Vault login (both `userpass` and `kubernetes`) with the Vault Enterprise namespace derived from `setup.namespace` when it ends in the KV `data` segment (e.g. `admin/ns/data` → namespace `admin/ns`). Namespace-scoped credentials previously failed authentication with "access denied" because the login always targeted the root namespace. Prefixes whose `data` segment is in the middle (the default and any custom root-namespace subpath) are unaffected and keep logging in against the root namespace.
+- Fix HashiCorp Vault parameters not being retrievable after being stored on a Vault Enterprise namespace.
+- Report a clear error when storing a parameter in HashiCorp Vault fails, instead of silently reporting success.
 
 ### Changed
 
-- Rename the HashiCorp Vault `namespace` setup field label to "Namespace" and clarify its description (namespace and path prefix where parameters are stored).
+- Configure the HashiCorp Vault namespace and KV path prefix as separate fields.
 
 ## [0.2.0] - 2026-07-14
 ### Added
