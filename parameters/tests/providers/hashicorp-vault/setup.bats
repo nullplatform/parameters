@@ -40,7 +40,7 @@ EOF
 }
 
 teardown() {
-  unset VAULT_ADDR VAULT_AUTH_MODE VAULT_TOKEN VAULT_PATH_PREFIX PROVIDER_CONFIG \
+  unset VAULT_ADDR VAULT_AUTH_MODE VAULT_TOKEN VAULT_NAMESPACE VAULT_PATH_PREFIX PROVIDER_CONFIG \
         VAULT_USERNAME VAULT_PASSWORD VAULT_K8S_ROLE VAULT_K8S_JWT_PATH \
         MOCK_LOGIN_BODY MOCK_CURL_EXIT
 }
@@ -80,10 +80,10 @@ teardown() {
   assert_contains "$output" "PREFIX=secret/data/nullplatform"
 }
 
-@test "vault setup: path_prefix from PROVIDER_CONFIG (.setup.namespace)" {
+@test "vault setup: path_prefix from PROVIDER_CONFIG (.setup.path_prefix)" {
   export VAULT_USERNAME="agent"
   export VAULT_PASSWORD="pw"
-  export PROVIDER_CONFIG='{"setup":{"address":"https://vault.example.com","namespace":"secret/data/team-x"}}'
+  export PROVIDER_CONFIG='{"setup":{"address":"https://vault.example.com","path_prefix":"secret/data/team-x"}}'
 
   run bash -c "$DEPS; source $SCRIPT && echo PREFIX=\$VAULT_PATH_PREFIX"
 
@@ -107,7 +107,7 @@ teardown() {
   export VAULT_USERNAME="agent"
   export VAULT_PASSWORD="pw"
   export VAULT_PATH_PREFIX="secret/data/from-env"
-  export PROVIDER_CONFIG='{"setup":{"address":"https://vault.example.com","namespace":"secret/data/from-config"}}'
+  export PROVIDER_CONFIG='{"setup":{"address":"https://vault.example.com","path_prefix":"secret/data/from-config"}}'
 
   run bash -c "$DEPS; source $SCRIPT && echo PREFIX=\$VAULT_PATH_PREFIX"
 
@@ -118,12 +118,34 @@ teardown() {
 @test "vault setup: path_prefix trailing slash is trimmed" {
   export VAULT_USERNAME="agent"
   export VAULT_PASSWORD="pw"
-  export PROVIDER_CONFIG='{"setup":{"address":"https://vault.example.com","namespace":"secret/data/team-x/"}}'
+  export PROVIDER_CONFIG='{"setup":{"address":"https://vault.example.com","path_prefix":"secret/data/team-x/"}}'
 
   run bash -c "$DEPS; source $SCRIPT && echo PREFIX=\$VAULT_PATH_PREFIX"
 
   assert_equal "$status" "0"
   assert_contains "$output" "PREFIX=secret/data/team-x"
+}
+
+@test "vault setup: rejects a namespace with illegal characters" {
+  export VAULT_USERNAME="agent"
+  export VAULT_PASSWORD="pw"
+  export PROVIDER_CONFIG='{"setup":{"address":"https://vault.example.com","namespace":"admin/ns?injected=1"}}'
+
+  run bash -c "$DEPS; source $SCRIPT"
+
+  [ "$status" -ne 0 ]
+  assert_contains "$output" "❌ Invalid Vault namespace"
+}
+
+@test "vault setup: rejects a path_prefix containing a .. segment" {
+  export VAULT_USERNAME="agent"
+  export VAULT_PASSWORD="pw"
+  export PROVIDER_CONFIG='{"setup":{"address":"https://vault.example.com","path_prefix":"secret/../data"}}'
+
+  run bash -c "$DEPS; source $SCRIPT"
+
+  [ "$status" -ne 0 ]
+  assert_contains "$output" "❌ Invalid Vault path_prefix"
 }
 
 @test "vault setup: unknown auth_mode fails" {
@@ -208,11 +230,11 @@ teardown() {
   assert_contains "$captured" "login/ns%2Fagent"
 }
 
-@test "vault setup: userpass login is NOT namespace-prefixed for the default prefix" {
+@test "vault setup: userpass login is NOT namespace-prefixed by default (root namespace)" {
   export VAULT_ADDR="https://vault.example.com"
   export VAULT_USERNAME="agent"
   export VAULT_PASSWORD="pw"
-  # default prefix (secret/data/nullplatform) → root namespace, no prefix
+  # no .setup.namespace → root namespace, no prefix
 
   run bash -c "$DEPS; source $SCRIPT"
 
@@ -221,78 +243,73 @@ teardown() {
   assert_contains "$captured" "https://vault.example.com/v1/auth/userpass/login/agent"
 }
 
-@test "vault setup: userpass login is prefixed with the Vault namespace (prefix ends in /data)" {
+@test "vault setup: userpass login is prefixed with the configured Vault namespace" {
   export VAULT_USERNAME="agent"
   export VAULT_PASSWORD="pw"
-  # admin/ns/data → Vault namespace = admin/ns
-  export PROVIDER_CONFIG='{"setup":{"address":"https://vault.example.com","namespace":"admin/ns/data"}}'
+  export PROVIDER_CONFIG='{"setup":{"address":"https://vault.example.com","namespace":"admin/eks-null-alfa-136"}}'
 
   run bash -c "$DEPS; source $SCRIPT"
 
   assert_equal "$status" "0"
+  captured=$(cat "$CURL_LOG")
+  assert_contains "$captured" "https://vault.example.com/v1/admin/eks-null-alfa-136/auth/userpass/login/agent"
+}
+
+@test "vault setup: VAULT_NAMESPACE is exported for store/retrieve/delete" {
+  export VAULT_USERNAME="agent"
+  export VAULT_PASSWORD="pw"
+  export PROVIDER_CONFIG='{"setup":{"address":"https://vault.example.com","namespace":"admin/ns"}}'
+
+  run bash -c "$DEPS; source $SCRIPT && echo NS=\$VAULT_NAMESPACE"
+
+  assert_equal "$status" "0"
+  assert_contains "$output" "NS=admin/ns"
+}
+
+@test "vault setup: VAULT_NAMESPACE from env var prefixes the login" {
+  export VAULT_ADDR="https://vault.example.com"
+  export VAULT_USERNAME="agent"
+  export VAULT_PASSWORD="pw"
+  export VAULT_NAMESPACE="admin/env-ns"
+
+  run bash -c "$DEPS; source $SCRIPT"
+
+  assert_equal "$status" "0"
+  captured=$(cat "$CURL_LOG")
+  assert_contains "$captured" "https://vault.example.com/v1/admin/env-ns/auth/userpass/login/agent"
+}
+
+@test "vault setup: namespace surrounding slashes are trimmed" {
+  export VAULT_USERNAME="agent"
+  export VAULT_PASSWORD="pw"
+  export PROVIDER_CONFIG='{"setup":{"address":"https://vault.example.com","namespace":"/admin/ns/"}}'
+
+  run bash -c "$DEPS; source $SCRIPT && echo NS=\$VAULT_NAMESPACE"
+
+  assert_equal "$status" "0"
+  assert_contains "$output" "NS=admin/ns"
   captured=$(cat "$CURL_LOG")
   assert_contains "$captured" "https://vault.example.com/v1/admin/ns/auth/userpass/login/agent"
 }
 
-@test "vault setup: VAULT_PATH_PREFIX export keeps the trailing /data segment when a namespace is derived" {
+@test "vault setup: path_prefix is independent of the namespace" {
   export VAULT_USERNAME="agent"
   export VAULT_PASSWORD="pw"
-  # Namespace derivation must not mutate VAULT_PATH_PREFIX itself — store/retrieve/
-  # delete compose their Vault paths from the full prefix (including /data).
-  export PROVIDER_CONFIG='{"setup":{"address":"https://vault.example.com","namespace":"admin/ns/data"}}'
+  # namespace and path_prefix are separate axes: setting a namespace must not
+  # alter the KV path prefix that store/retrieve/delete compose their paths from.
+  export PROVIDER_CONFIG='{"setup":{"address":"https://vault.example.com","namespace":"admin/ns","path_prefix":"secret/data/nullplatform"}}'
 
   run bash -c "$DEPS; source $SCRIPT && echo PREFIX=\$VAULT_PATH_PREFIX"
 
   assert_equal "$status" "0"
-  assert_contains "$output" "PREFIX=admin/ns/data"
+  assert_contains "$output" "PREFIX=secret/data/nullplatform"
 }
 
-@test "vault setup: userpass login is NOT namespace-prefixed for a non-default root prefix (custom subpath, no Enterprise namespace)" {
-  export VAULT_USERNAME="agent"
-  export VAULT_PASSWORD="pw"
-  # secret/data/team-x is a plain KV mount + subpath in the root namespace — the
-  # `data` segment is in the MIDDLE, so no namespace is derived (backward compat).
-  export PROVIDER_CONFIG='{"setup":{"address":"https://vault.example.com","namespace":"secret/data/team-x"}}'
-
-  run bash -c "$DEPS; source $SCRIPT"
-
-  assert_equal "$status" "0"
-  captured=$(cat "$CURL_LOG")
-  assert_contains "$captured" "https://vault.example.com/v1/auth/userpass/login/agent"
-}
-
-@test "vault setup: userpass login is NOT namespace-prefixed when a subpath follows the data segment" {
-  export VAULT_USERNAME="agent"
-  export VAULT_PASSWORD="pw"
-  # Only a TRAILING /data derives a namespace; admin/ns/data/foo has a subpath
-  # after data, so it is treated as a root KV path (no namespace prefix).
-  export PROVIDER_CONFIG='{"setup":{"address":"https://vault.example.com","namespace":"admin/ns/data/foo"}}'
-
-  run bash -c "$DEPS; source $SCRIPT"
-
-  assert_equal "$status" "0"
-  captured=$(cat "$CURL_LOG")
-  assert_contains "$captured" "https://vault.example.com/v1/auth/userpass/login/agent"
-}
-
-@test "vault setup: userpass login namespace does not treat 'database' as the data segment" {
-  export VAULT_USERNAME="agent"
-  export VAULT_PASSWORD="pw"
-  export PROVIDER_CONFIG='{"setup":{"address":"https://vault.example.com","namespace":"myns/database/x"}}'
-
-  run bash -c "$DEPS; source $SCRIPT"
-
-  assert_equal "$status" "0"
-  captured=$(cat "$CURL_LOG")
-  # 'database' is not the KV 'data' segment → no namespace derived → root login
-  assert_contains "$captured" "https://vault.example.com/v1/auth/userpass/login/agent"
-}
-
-@test "vault setup: kubernetes login is prefixed with the Vault namespace" {
+@test "vault setup: kubernetes login is prefixed with the configured Vault namespace" {
   export VAULT_AUTH_MODE="kubernetes"
   export VAULT_K8S_ROLE="nullplatform-agent"
   export VAULT_K8S_JWT_PATH="$SA_TOKEN_FILE"
-  export PROVIDER_CONFIG='{"setup":{"address":"https://vault.example.com","auth_mode":"kubernetes","kubernetes_role":"nullplatform-agent","namespace":"admin/ns/data"}}'
+  export PROVIDER_CONFIG='{"setup":{"address":"https://vault.example.com","auth_mode":"kubernetes","kubernetes_role":"nullplatform-agent","namespace":"admin/ns"}}'
 
   run bash -c "$DEPS; source $SCRIPT"
 

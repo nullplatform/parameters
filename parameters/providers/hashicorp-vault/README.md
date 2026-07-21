@@ -11,43 +11,49 @@ Provider config (from the nullplatform provider specification):
 | Field                  | Required            | Description                                                                 |
 |------------------------|---------------------|-----------------------------------------------------------------------------|
 | `setup.address`        | yes                 | Vault HTTP(S) endpoint, e.g. `https://vault.example.com:8200`.               |
-| `setup.namespace`      | no (default `secret/data/nullplatform`) | KV v2 path prefix parameters are stored under; on Vault Enterprise it may be prefixed with a Vault namespace. |
+| `setup.namespace`      | no (default root)   | Vault Enterprise namespace the parameters live under, e.g. `admin/eks-null-alfa-136`. Leave empty for the root namespace (Vault OSS). |
+| `setup.path_prefix`    | no (default `secret/data/nullplatform`) | KV v2 path prefix (relative to the namespace) parameters are stored under. Must be the full `<mount>/data/<subpath>`. |
 | `setup.auth_mode`      | yes (default `userpass`) | Authentication mode: `userpass` or `kubernetes`.                       |
 | `setup.kubernetes_role`| when `kubernetes`   | Vault Kubernetes auth role bound to the agent's ServiceAccount.              |
 
-The path prefix defaults to `secret/data/nullplatform` and is configurable via
-`setup.namespace` (or the `VAULT_PATH_PREFIX` env var). It must include the KV v2
-`data/` segment. The auth mounts are fixed to Vault's defaults (`auth/userpass`,
-`auth/kubernetes`).
+`namespace` and `path_prefix` are **two independent axes**:
+
+- **`setup.namespace`** (env: `VAULT_NAMESPACE`) — the Vault Enterprise namespace.
+  It is applied as a URL prefix (`$VAULT_ADDR/v1/<namespace>/…`) on the login **and**
+  on every store/retrieve/delete request. Empty means the root namespace, so
+  non-Enterprise (Vault OSS) deployments simply leave it unset.
+- **`setup.path_prefix`** (env: `VAULT_PATH_PREFIX`, default
+  `secret/data/nullplatform`) — the KV v2 path prefix relative to the namespace. It
+  must be the full `<mount>/data/<subpath>`: the mount name, then the KV v2 `data`
+  segment, then an optional subpath. `store` embeds it in the `external_id`, so
+  stored references survive a later `path_prefix` change.
+
+The auth mounts are fixed to Vault's defaults (`auth/userpass`, `auth/kubernetes`).
 
 ### Vault Enterprise namespaces
 
 On Vault Enterprise, credentials and roles are scoped to a namespace, so the login
-must target that namespace or Vault returns **access denied**. Encode the namespace
-in `setup.namespace` as `<namespace-path>/data` — i.e. the Vault namespace path
-**terminated by the KV v2 `data` segment**. `setup` strips that trailing `/data` to
-recover the namespace and prefixes both the `userpass` and `kubernetes` login with
-it (`store`/`retrieve`/`delete` already reach it because the namespace is embedded
-in the request path).
+must target that namespace or Vault returns **access denied**. Inside a namespace, a
+KV v2 secret lives at `<namespace>/<mount>/data/<subpath>` — the mount name sits
+between the namespace and `data`, which is why the two are configured separately.
 
-| `setup.namespace`              | Vault namespace for login | KV path used by store/retrieve |
-|--------------------------------|---------------------------|--------------------------------|
-| `secret/data/nullplatform` *(default)* | *(root, none)*     | `secret/data/nullplatform/…`   |
-| `secret/data/team-x`           | *(root, none)*            | `secret/data/team-x/…`         |
-| `admin/ns/data`                | `admin/ns`                | `admin/ns/data/…`              |
-| `admin/team/sub/data`          | `admin/team/sub`          | `admin/team/sub/data/…`        |
+| `setup.namespace`       | `setup.path_prefix`         | Full KV path used by store/retrieve       |
+|-------------------------|-----------------------------|-------------------------------------------|
+| *(empty — root)*        | `secret/data/nullplatform` *(default)* | `secret/data/nullplatform/…`   |
+| *(empty — root)*        | `secret/data/team-x`        | `secret/data/team-x/…`                    |
+| `admin/ns`              | `secret/data/nullplatform`  | `admin/ns/secret/data/nullplatform/…`     |
+| `admin/team/sub`        | `kv/data/params`            | `admin/team/sub/kv/data/params/…`         |
 
-> **Note:** the namespace is derived **only** from a trailing `/data` segment. A
-> prefix whose `data` segment is in the middle (e.g. the default, or a custom
-> subpath like `secret/data/team-x`) is treated as a plain KV mount + path in the
-> **root** namespace — no namespace prefix is added to the login. This keeps
-> non-Enterprise deployments working unchanged. To use a Vault namespace, the
-> prefix must end at `<namespace>/data` (no KV subpath after `data`).
+> **Note:** changing `setup.namespace` after parameters exist is a migration, not a
+> config tweak — the namespace is not embedded in the `external_id`, and Vault does
+> not move secrets between namespaces. Point it at the namespace where the secrets
+> already live.
 
 > **Note:** the Vault policy examples below grant access to the default
 > `secret/data/nullplatform/*` (and `secret/metadata/nullplatform/*`) paths. If you
-> set a custom `setup.namespace`, adjust the policy paths to match it — the KV mount
-> and the `metadata/` counterpart of your configured `data/` path.
+> set a custom `setup.path_prefix`, adjust the policy paths to match it — the KV
+> mount and the `metadata/` counterpart of your configured `data/` path. On Vault
+> Enterprise, write the policy inside the configured `setup.namespace`.
 
 ## Authentication
 

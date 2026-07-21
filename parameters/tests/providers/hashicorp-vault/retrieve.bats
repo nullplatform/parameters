@@ -105,6 +105,17 @@ EOF
   assert_contains "$captured" "https://vault.example.com/v1/secret/data/nullplatform/abc-123"
 }
 
+@test "vault retrieve: applies the Vault namespace as a URL prefix" {
+  export VAULT_NAMESPACE="admin/eks-null-alfa-136"
+  body='{"data":{"data":{"value":"x"}}}'
+
+  run bash -c "$DEPS; MOCK_HTTP_STATUS=200 MOCK_HTTP_BODY='$body' source $SCRIPT"
+
+  assert_equal "$status" "0"
+  captured=$(cat "$CURL_LOG")
+  assert_contains "$captured" "https://vault.example.com/v1/admin/eks-null-alfa-136/secret/data/nullplatform/abc-123"
+}
+
 @test "vault retrieve: uses external_id path verbatim, ignoring current VAULT_PATH_PREFIX" {
   # Regression: simulates setup.namespace being reconfigured AFTER this secret was
   # stored. The full path lives in the external_id, so it must win over the current

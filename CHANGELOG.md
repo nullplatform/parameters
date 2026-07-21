@@ -9,11 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Prefix the HashiCorp Vault login (both `userpass` and `kubernetes`) with the Vault Enterprise namespace derived from `setup.namespace` when it ends in the KV `data` segment (e.g. `admin/ns/data` → namespace `admin/ns`). Namespace-scoped credentials previously failed authentication with "access denied" because the login always targeted the root namespace. Prefixes whose `data` segment is in the middle (the default and any custom root-namespace subpath) are unaffected and keep logging in against the root namespace.
+- Fix HashiCorp Vault parameters failing to retrieve after a successful store on Vault Enterprise namespaces. The Vault namespace and the KV mount are now configured as two independent fields (`setup.namespace` and `setup.path_prefix`), so read/write requests reach the real KV path `<namespace>/<mount>/data/<subpath>`. Previously a single `setup.namespace` field with a trailing-`/data` heuristic left no place for the KV mount name, so writes landed on a non-existent path.
+- Validate the HTTP status of the HashiCorp Vault `store` write. `curl -s` exits 0 even on HTTP 4xx/5xx, so a failed write (wrong namespace/mount, missing permission) was previously reported as success while the value was never persisted.
 
 ### Changed
 
-- Rename the HashiCorp Vault `namespace` setup field label to "Namespace" and clarify its description (namespace and path prefix where parameters are stored).
+- Split the HashiCorp Vault `setup.namespace` field into two: `setup.namespace` (env `VAULT_NAMESPACE`) is now the Vault Enterprise namespace (applied as a URL prefix on login and every request; empty = root namespace), and the new `setup.path_prefix` (env `VAULT_PATH_PREFIX`, default `secret/data/nullplatform`) is the KV v2 `<mount>/data/<subpath>` prefix. The Vault namespace is no longer embedded in the `external_id`.
 
 ## [0.2.0] - 2026-07-14
 ### Added
