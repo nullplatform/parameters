@@ -17,3 +17,13 @@ output "federated_credential_id" {
   description = "Resource ID of the federated identity credential. Pass to the nullplatform agent module's azure_federated_credential_id so the agent Helm release waits until the credential exists. Empty when workload_identity.enable=false."
   value       = length(azurerm_federated_identity_credential.this) > 0 ? azurerm_federated_identity_credential.this[0].id : ""
 }
+
+output "vault_id" {
+  description = "Resource ID of the Key Vault created by this module (the RBAC scope target). Empty when key_vault.enable=false."
+  value       = length(azurerm_key_vault.this) > 0 ? azurerm_key_vault.this[0].id : ""
+}
+
+output "vault_uri" {
+  description = "URI of the Key Vault created by this module. Empty when key_vault.enable=false."
+  value       = length(azurerm_key_vault.this) > 0 ? azurerm_key_vault.this[0].vault_uri : ""
+}

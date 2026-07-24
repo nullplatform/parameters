@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add support to manage (store, retrieve and delete) parameters from Azure Key Vault.
 - Add the Azure Key Vault install tofu module (`specs/install/`) built on the shared parameter-storage modules, plus a `specs/requirements/` module that provisions a user-assigned managed identity (AKS Workload Identity) and grants it the Key Vault Secrets Officer RBAC role.
 - Azure Key Vault `setup` now authenticates the Azure CLI via an AKS workload-identity federated token when `AZURE_FEDERATED_TOKEN_FILE` / `AZURE_CLIENT_ID` / `AZURE_TENANT_ID` are set.
+- The Azure Key Vault `specs/requirements/` module can optionally create the Key Vault itself (`key_vault.enable`) with the RBAC authorization model and hardened defaults; it is an independent toggle from the managed identity, and when both are enabled the vault is scoped to the identity automatically.
 
 ### Changed
 

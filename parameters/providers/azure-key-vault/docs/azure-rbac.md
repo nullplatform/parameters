@@ -76,8 +76,22 @@ process's argv (visible via `ps` / `/proc/<pid>/cmdline` to anything sharing
 the pod's PID namespace) — the same residual exposure the old `--password`
 service-principal login had. See "Security notes" below.
 
+### Creating the vault (optional)
+
+The same module can also create the Key Vault itself — set `key_vault.enable = true`
+and pass `name`, `resource_group_name`, and `location`. It is created with the
+Azure RBAC authorization model (`rbac_authorization_enabled = true`, which this
+provider requires) and hardened defaults (purge protection on, 90-day soft-delete,
+public network access overridable). The `key_vault` and `workload_identity` blocks
+are **independent toggles** — create only the vault, only the identity, or both;
+when both are enabled the created vault is added to the identity's RBAC scope
+automatically. **`key_vault.name` MUST match the runtime provider config
+`vault_name`** (and `AZURE_KEY_VAULT_NAME`) — the two are coupled by name, not by
+reference, so a mismatch means the agent authenticates but reads the wrong vault.
+
 Applying this module requires the tofu caller to have `Contributor` on the managed
-identity's resource group and `Owner` / `User Access Administrator` on the vault
+identity's resource group (and on the vault's resource group when
+`key_vault.enable = true`) and `Owner` / `User Access Administrator` on the vault
 scope to create role assignments, plus a subscription (`ARM_SUBSCRIPTION_ID`) for
 the `azurerm` provider. App-registration directory permissions are no longer
 required.

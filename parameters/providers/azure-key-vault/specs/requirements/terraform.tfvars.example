@@ -1,3 +1,26 @@
+# Create the Key Vault this provider stores parameters in.
+# key_vault.name MUST match the runtime provider config `vault_name`
+# (and AZURE_KEY_VAULT_NAME) — the coupling is by name, not by reference.
+key_vault = {
+  enable              = true
+  name                = "acme-prod-nullplatform-kv"
+  resource_group_name = "acme-prod"
+  location            = "eastus"
+  # sku_name                      = "standard" # default; "premium" for HSM-backed keys
+  # purge_protection_enabled      = true       # default (hardened)
+  # soft_delete_retention_days    = 90          # default
+  # public_network_access_enabled = true        # set false for private-endpoint-only access
+  # network_acls = {
+  #   default_action = "Deny"
+  #   bypass         = "AzureServices"
+  #   ip_rules       = ["203.0.113.0/24"]
+  # }
+}
+
+# Create the managed identity federated to the agent's Kubernetes ServiceAccount.
+# When both blocks are enabled, the vault created above is added to this
+# identity's RBAC scope automatically; key_vault_ids is only for additional,
+# pre-existing vaults.
 workload_identity = {
   enable                    = true
   name                      = "nullplatform-agent-azure-key-vault"
@@ -6,8 +29,8 @@ workload_identity = {
   oidc_issuer_url           = "https://eastus.oic.prod-aks.azure.com/00000000-0000-0000-0000-000000000000/11111111-1111-1111-1111-111111111111/"
   service_account_namespace = "nullplatform"
   service_account_name      = "nullplatform-agent"
-  key_vault_ids = [
-    "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/acme-prod/providers/Microsoft.KeyVault/vaults/acme-prod-billing-kv",
-  ]
-  # role = "Key Vault Secrets Officer"  # default
+  # key_vault_ids = [
+  #   "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/acme-prod/providers/Microsoft.KeyVault/vaults/other-existing-kv",
+  # ]
+  # role = "Key Vault Secrets Officer" # default
 }

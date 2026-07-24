@@ -1,3 +1,14 @@
+resource "terraform_data" "validation" {
+  lifecycle {
+    # Cross-variable check: an enabled identity must have at least one vault to
+    # scope to — either external ids or a vault created here (var.key_vault).
+    precondition {
+      condition     = !var.workload_identity.enable || length(var.workload_identity.key_vault_ids) > 0 || var.key_vault.enable
+      error_message = "When workload_identity.enable=true, scope the identity to at least one vault: set workload_identity.key_vault_ids and/or enable key_vault to create one."
+    }
+  }
+}
+
 resource "azurerm_user_assigned_identity" "this" {
   count               = var.workload_identity.enable ? 1 : 0
   name                = var.workload_identity.name
@@ -6,13 +17,12 @@ resource "azurerm_user_assigned_identity" "this" {
 }
 
 resource "azurerm_federated_identity_credential" "this" {
-  count               = var.workload_identity.enable ? 1 : 0
-  name                = "${var.workload_identity.name}-fic"
-  resource_group_name = var.workload_identity.resource_group_name
-  parent_id           = azurerm_user_assigned_identity.this[0].id
-  audience            = ["api://AzureADTokenExchange"]
-  issuer              = var.workload_identity.oidc_issuer_url
-  subject             = "system:serviceaccount:${var.workload_identity.service_account_namespace}:${var.workload_identity.service_account_name}"
+  count     = var.workload_identity.enable ? 1 : 0
+  name      = "${var.workload_identity.name}-fic"
+  parent_id = azurerm_user_assigned_identity.this[0].id
+  audience  = ["api://AzureADTokenExchange"]
+  issuer    = var.workload_identity.oidc_issuer_url
+  subject   = "system:serviceaccount:${var.workload_identity.service_account_namespace}:${var.workload_identity.service_account_name}"
 }
 
 resource "azurerm_role_assignment" "this" {
