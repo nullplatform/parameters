@@ -1,31 +1,24 @@
-locals {
-  sp_enabled = var.service_principal.enable
-
-  # One role assignment per Key Vault, keyed by the vault resource ID so the
-  # for_each is stable across plans.
-  vault_ids = local.sp_enabled ? { for id in var.service_principal.key_vault_ids : id => id } : {}
+resource "azurerm_user_assigned_identity" "this" {
+  count               = var.workload_identity.enable ? 1 : 0
+  name                = var.workload_identity.name
+  resource_group_name = var.workload_identity.resource_group_name
+  location            = var.workload_identity.location
 }
 
-resource "azuread_application" "this" {
-  count        = local.sp_enabled ? 1 : 0
-  display_name = var.service_principal.display_name
-}
-
-resource "azuread_service_principal" "this" {
-  count     = local.sp_enabled ? 1 : 0
-  client_id = azuread_application.this[0].client_id
-}
-
-resource "azuread_application_password" "this" {
-  count          = local.sp_enabled ? 1 : 0
-  application_id = azuread_application.this[0].id
-  end_date       = var.service_principal.secret_end_date
+resource "azurerm_federated_identity_credential" "this" {
+  count               = var.workload_identity.enable ? 1 : 0
+  name                = "${var.workload_identity.name}-fic"
+  resource_group_name = var.workload_identity.resource_group_name
+  parent_id           = azurerm_user_assigned_identity.this[0].id
+  audience            = ["api://AzureADTokenExchange"]
+  issuer              = var.workload_identity.oidc_issuer_url
+  subject             = "system:serviceaccount:${var.workload_identity.service_account_namespace}:${var.workload_identity.service_account_name}"
 }
 
 resource "azurerm_role_assignment" "this" {
   for_each = local.vault_ids
 
   scope                = each.value
-  role_definition_name = var.service_principal.role
-  principal_id         = azuread_service_principal.this[0].object_id
+  role_definition_name = var.workload_identity.role
+  principal_id         = azurerm_user_assigned_identity.this[0].principal_id
 }
