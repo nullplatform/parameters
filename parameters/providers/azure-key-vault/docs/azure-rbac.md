@@ -1,9 +1,10 @@
 # Azure RBAC
 
 Minimum Azure permissions for `parameters/providers/azure-key-vault/`. The agent
-authenticates as a service principal (or managed identity) and operates on
-secrets in a specific Key Vault. Scope the role assignment to the vault so the
-identity cannot reach any secret outside this provider's domain.
+authenticates as an AKS workload identity (a user-assigned managed identity
+federated to its Kubernetes ServiceAccount) and operates on secrets in a specific
+Key Vault. Scope the role assignment to the vault so the identity cannot reach any
+secret outside this provider's domain.
 
 This provider assumes the vault uses the **Azure RBAC** authorization model
 (`enable_rbac_authorization = true`), not the legacy access-policy model.
@@ -29,7 +30,7 @@ the vault:
 
 ```bash
 az role assignment create \
-  --assignee "<service-principal-object-id>" \
+  --assignee "<managed-identity-principal-id>" \
   --role "Key Vault Secrets Officer" \
   --scope "/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.KeyVault/vaults/<vault-name>"
 ```
@@ -50,42 +51,41 @@ expiry (see `architecture.md`).
 
 ## Provisioning the identity (`specs/requirements/`)
 
-The `specs/requirements/` tofu module can create the Azure AD application +
-service principal, mint a client secret, and assign `Key Vault Secrets Officer`
-over one or more vaults. Set `service_principal.enable = true` and pass the vault
-resource IDs. Its outputs map directly onto the agent's environment:
+The `specs/requirements/` tofu module can create a **user-assigned managed
+identity** federated to the agent's Kubernetes ServiceAccount (AKS Workload
+Identity) and assign `Key Vault Secrets Officer` over one or more vaults. Set
+`workload_identity.enable = true` and pass the managed-identity name, resource
+group, location, the AKS cluster `oidc_issuer_url`, the agent ServiceAccount
+namespace/name, and the vault resource IDs. Its outputs are used as follows:
 
-| Output          | Agent env var         |
-|-----------------|-----------------------|
-| `client_id`     | `AZURE_CLIENT_ID`     |
-| `client_secret` | `AZURE_CLIENT_SECRET` |
-| `tenant_id`     | `AZURE_TENANT_ID`     |
+| Output         | Purpose                                                                  |
+|----------------|--------------------------------------------------------------------------|
+| `client_id`    | Annotate the agent ServiceAccount: `azure.workload.identity/client-id`   |
+| `tenant_id`    | Agent env var `AZURE_TENANT_ID`                                          |
+| `principal_id` | The RBAC principal the role assignment targets (informational)          |
 
-The `setup` script performs an explicit `az login --service-principal` from these
-env vars — the Azure CLI, unlike the Azure SDKs, does not read them automatically.
+Once the ServiceAccount is annotated with the `client_id` and the pod is labeled
+`azure.workload.identity/use: "true"`, the AKS workload-identity webhook injects
+`AZURE_CLIENT_ID` / `AZURE_TENANT_ID` / `AZURE_FEDERATED_TOKEN_FILE` /
+`AZURE_AUTHORITY_HOST` into the pod. The `setup` script exchanges the projected
+token with `az login --federated-token` — no secret is ever handled.
 
-Applying this module requires the tofu caller to have directory permissions to
-create app registrations and `Owner` / `User Access Administrator` on the vault
+Applying this module requires the tofu caller to have `Contributor` on the managed
+identity's resource group and `Owner` / `User Access Administrator` on the vault
 scope to create role assignments, plus a subscription (`ARM_SUBSCRIPTION_ID`) for
-the `azurerm` provider.
+the `azurerm` provider. App-registration directory permissions are no longer
+required.
 
 ---
 
 ## Security notes
 
-- **State holds a live secret.** `client_secret` is marked `sensitive` (redacted
-  from plan/apply output), but Tofu still writes it to state in plaintext. Use a
-  state backend that is encrypted at rest with tightly restricted access for
-  `specs/requirements/` (mirror the repo's `backend.tfbackend.example`
-  convention). Rotate the secret by re-applying (`secret_end_date` bounds its
-  lifetime; the default is ~2 years).
-- **Secret on the CLI process line.** The agent's `setup` passes the secret to
-  `az login --service-principal --password` on argv, because the Azure CLI does
-  not accept the service-principal secret on stdin for non-interactive login. It
-  is therefore briefly visible in the process table to co-located principals. To
-  avoid a plaintext secret entirely, prefer **certificate-based** service-principal
-  auth (only a file path appears on argv) or **OIDC / workload-identity
-  federation** (no secret at all) where the agent's runtime supports it;
-  otherwise run the agent in an isolated, single-tenant process/container.
+- **No secret by construction.** The managed identity has no client secret:
+  Azure issues short-lived tokens to the agent pod and rotates them
+  automatically. Nothing expires, and no credential is written to tofu state.
+  This is the recommended Azure equivalent of an AWS IAM role.
+- **Federation is scoped to one ServiceAccount.** The federated credential
+  subject is `system:serviceaccount:<namespace>:<name>`; only that pod identity
+  in that AKS cluster can assume the managed identity.
 - **Least privilege.** Assign only `Key Vault Secrets Officer` scoped per vault
   (as this module does). Do not grant vault-management roles.

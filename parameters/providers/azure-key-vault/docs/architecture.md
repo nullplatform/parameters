@@ -85,12 +85,13 @@ If the identity lacks `Purge` permission, purge fails with a warning but delete 
 
 ## Authentication
 
-The agent authenticates to Azure as a managed identity or a service principal.
-The `setup` script logs the Azure CLI in with a service principal when the
-`AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET` / `AZURE_TENANT_ID` env vars are present
-(the `az` CLI, unlike the Azure SDKs, does not read them automatically); otherwise
-it relies on an existing session (managed identity or a prior `az login`).
+The agent authenticates to Azure as an AKS workload identity. The `setup` script
+logs the Azure CLI in with the projected ServiceAccount token when the
+`AZURE_CLIENT_ID` / `AZURE_TENANT_ID` / `AZURE_FEDERATED_TOKEN_FILE` env vars are
+present (injected by the AKS workload-identity webhook) via
+`az login --federated-token`; otherwise it relies on an existing session (managed
+identity via IMDS or a prior `az login`). No client secret is involved.
 
 The identity needs the `Key Vault Secrets Officer` RBAC role on the vault — see
 [`azure-rbac.md`](./azure-rbac.md). The `specs/requirements/` module can create the
-service principal and assign the role.
+managed identity, federate it to the ServiceAccount, and assign the role.
