@@ -68,7 +68,13 @@ Once the ServiceAccount is annotated with the `client_id` and the pod is labeled
 `azure.workload.identity/use: "true"`, the AKS workload-identity webhook injects
 `AZURE_CLIENT_ID` / `AZURE_TENANT_ID` / `AZURE_FEDERATED_TOKEN_FILE` /
 `AZURE_AUTHORITY_HOST` into the pod. The `setup` script exchanges the projected
-token with `az login --federated-token` — no secret is ever handled.
+token with `az login --federated-token` — no long-lived client secret is ever
+handled or written to state. The federated token itself is still bearer
+credential material for its short validity window, and az CLI has no
+file-reference form of `--federated-token`, so it briefly appears on that
+process's argv (visible via `ps` / `/proc/<pid>/cmdline` to anything sharing
+the pod's PID namespace) — the same residual exposure the old `--password`
+service-principal login had. See "Security notes" below.
 
 Applying this module requires the tofu caller to have `Contributor` on the managed
 identity's resource group and `Owner` / `User Access Administrator` on the vault
@@ -80,10 +86,15 @@ required.
 
 ## Security notes
 
-- **No secret by construction.** The managed identity has no client secret:
-  Azure issues short-lived tokens to the agent pod and rotates them
+- **No long-lived secret by construction.** The managed identity has no client
+  secret: Azure issues short-lived tokens to the agent pod and rotates them
   automatically. Nothing expires, and no credential is written to tofu state.
-  This is the recommended Azure equivalent of an AWS IAM role.
+  This is the recommended Azure equivalent of an AWS IAM role. The projected
+  federated token the `setup` script exchanges is still short-lived bearer
+  material and briefly appears on the `az login` process's argv (az CLI has
+  no file-reference option for `--federated-token`) — treat pod PID-namespace
+  isolation and host-level process-list access as part of this control, and
+  do not enable `shareProcessNamespace` on the agent pod.
 - **Federation is scoped to one ServiceAccount.** The federated credential
   subject is `system:serviceaccount:<namespace>:<name>`; only that pod identity
   in that AKS cluster can assume the managed identity.

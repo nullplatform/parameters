@@ -90,7 +90,11 @@ logs the Azure CLI in with the projected ServiceAccount token when the
 `AZURE_CLIENT_ID` / `AZURE_TENANT_ID` / `AZURE_FEDERATED_TOKEN_FILE` env vars are
 present (injected by the AKS workload-identity webhook) via
 `az login --federated-token`; otherwise it relies on an existing session (managed
-identity via IMDS or a prior `az login`). No client secret is involved.
+identity via IMDS or a prior `az login`). No long-lived client secret is
+involved — nothing to rotate, nothing written to tofu state — but the
+short-lived federated token itself briefly appears on the `az login` process's
+argv, since az CLI has no file-reference form of `--federated-token`. See
+[`azure-rbac.md`](./azure-rbac.md#security-notes).
 
 The identity needs the `Key Vault Secrets Officer` RBAC role on the vault — see
 [`azure-rbac.md`](./azure-rbac.md). The `specs/requirements/` module can create the

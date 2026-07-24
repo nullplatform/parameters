@@ -10,7 +10,9 @@ set -euo pipefail
 # `az login`). Under AKS Workload Identity the pod receives a projected
 # ServiceAccount token at AZURE_FEDERATED_TOKEN_FILE (plus AZURE_CLIENT_ID /
 # AZURE_TENANT_ID); this script exchanges it for an Azure session with
-# `az login --federated-token`. No client secret is involved.
+# `az login --federated-token`. No long-lived client secret is involved (no
+# rotation, nothing in tofu state) — see the login block below for the
+# residual argv-exposure caveat on the short-lived federated token itself.
 #
 # Exports: AZ_VAULT_NAME, AZ_SECRET_PREFIX
 
@@ -36,10 +38,18 @@ fi
 # Workload-identity login (optional; see the header note above). Skipped when a
 # session already exists (managed identity via IMDS or a prior `az login`).
 #
-# The federated token is a short-lived, projected ServiceAccount token — not a
-# secret — so `az login --federated-token` carries no rotating credential and
-# nothing sensitive lands in state. This is the secret-less replacement for the
-# old `--password` service-principal login. See docs/azure-rbac.md.
+# This is secret-less in the sense that matters for tofu state and rotation:
+# unlike the old service-principal --password, nothing here expires, needs
+# rotating, or is ever written to state. The old `--password` service-principal
+# login is fully removed. That said, the federated token itself IS bearer
+# credential material for its (short) validity window: az CLI has no
+# --federated-token-file / file-reference option, so — exactly like the old
+# --password — it must go on argv here and is briefly visible in this
+# process's entry in the process table (ps, /proc/<pid>/cmdline) to anything
+# else with visibility into the pod's PID namespace. This is an accepted,
+# unavoidable limitation of the az CLI (Microsoft's own docs use the same
+# pattern); do not add `set -x` or any command tracing around this call, and
+# do not run this container with a shared PID namespace. See docs/azure-rbac.md.
 if [ -n "${AZURE_FEDERATED_TOKEN_FILE:-}" ] && [ -n "${AZURE_CLIENT_ID:-}" ] && [ -n "${AZURE_TENANT_ID:-}" ]; then
   if ! az account show >/dev/null 2>&1; then
     if ! az login --service-principal \

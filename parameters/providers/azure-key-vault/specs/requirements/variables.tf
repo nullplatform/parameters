@@ -54,28 +54,42 @@ variable "workload_identity" {
     condition     = !var.workload_identity.enable || var.workload_identity.name != ""
     error_message = "workload_identity.name is required when workload_identity.enable=true."
   }
+
   validation {
     condition     = !var.workload_identity.enable || var.workload_identity.resource_group_name != ""
     error_message = "workload_identity.resource_group_name is required when workload_identity.enable=true."
   }
+
   validation {
     condition     = !var.workload_identity.enable || var.workload_identity.location != ""
     error_message = "workload_identity.location is required when workload_identity.enable=true."
   }
+
   validation {
     condition     = !var.workload_identity.enable || var.workload_identity.oidc_issuer_url != ""
     error_message = "workload_identity.oidc_issuer_url is required when workload_identity.enable=true."
   }
+
   validation {
     condition     = !var.workload_identity.enable || var.workload_identity.service_account_namespace != ""
     error_message = "workload_identity.service_account_namespace is required when workload_identity.enable=true."
   }
+
   validation {
     condition     = !var.workload_identity.enable || var.workload_identity.service_account_name != ""
     error_message = "workload_identity.service_account_name is required when workload_identity.enable=true."
   }
+
   validation {
     condition     = !var.workload_identity.enable || length(var.workload_identity.key_vault_ids) > 0
     error_message = "workload_identity.key_vault_ids must have at least one entry when workload_identity.enable=true."
+  }
+
+  validation {
+    condition = !var.workload_identity.enable || alltrue([
+      for id in var.workload_identity.key_vault_ids :
+      can(regex("^/subscriptions/[^/]+/resourceGroups/[^/]+/providers/Microsoft\\.KeyVault/vaults/[^/]+$", id))
+    ])
+    error_message = "Each workload_identity.key_vault_ids entry must be a full Key Vault resource ID (/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.KeyVault/vaults/<name>), so the role assignment is scoped to the vault and not a broader scope."
   }
 }
