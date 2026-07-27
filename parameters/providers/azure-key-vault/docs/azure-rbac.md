@@ -41,7 +41,7 @@ and `delete` would fail. Do not grant vault-management roles (e.g.
 
 ### Purge
 
-`delete` does a best-effort `az keyvault secret purge` after the soft-delete. The
+`delete` does a best-effort purge (`DELETE /deletedsecrets/<name>`) after the soft-delete. The
 `purge/action` is included in `Key Vault Secrets Officer`. If you deliberately
 withhold purge, the provider downgrades the purge failure to a warning and the
 secret remains in the soft-delete window until Azure auto-cleans it at retention

@@ -35,7 +35,7 @@ Max secret name length in AKV is 127 characters. The provider checks this and su
 
 ## Versioning
 
-AKV has native versioning. Every `az keyvault secret set` creates a new version, all retained inside the same secret. The version identifier is the last segment of the returned `id` URL.
+AKV has native versioning. Every write (`PUT /secrets/<name>`) creates a new version, all retained inside the same secret. The version identifier is the last segment of the returned `id` URL.
 
 ### Version identity in external_id
 
@@ -51,13 +51,13 @@ For Azure Key Vault, `version_id` is **the literal hex string version returned b
 organization=acme-1255165411/.../DB_PASSWORD-42#93a0b2eb12a64fa7b3acb18900a8d33d
 ```
 
-That 32-char hex string is the AKV version identifier. It can be used as-is with `az keyvault secret show --version 93a0b2eb12a64fa7b3acb18900a8d33d` to fetch that specific historical version.
+That 32-char hex string is the AKV version identifier. It maps to the REST path `GET /secrets/<name>/93a0b2eb12a64fa7b3acb18900a8d33d` to fetch that specific historical version.
 
 On `retrieve`:
-- With `#<hex>` → fetch that version via `--version <hex>`.
-- Without → fetch the latest.
+- With `#<hex>` → fetch that version (`GET /secrets/<name>/<hex>`).
+- Without → fetch the latest (`GET /secrets/<name>`).
 
-On `delete`, the version suffix is ignored — `secret delete` + `secret purge` remove all versions.
+On `delete`, the version suffix is ignored — the soft-delete + purge remove all versions.
 
 ---
 
@@ -65,8 +65,8 @@ On `delete`, the version suffix is ignored — `secret delete` + `secret purge` 
 
 AKV uses soft-delete by default (90-day retention). The provider does both:
 
-1. `az keyvault secret delete` — moves to soft-deleted state.
-2. `az keyvault secret purge` — hard-deletes from the soft-delete bin, freeing the name immediately.
+1. `DELETE /secrets/<name>` — moves to soft-deleted state.
+2. `DELETE /deletedsecrets/<name>` — hard-deletes from the soft-delete bin, freeing the name immediately.
 
 If the identity lacks `Purge` permission, purge fails with a warning but delete still succeeds. The secret stays in the soft-delete window and is auto-cleaned by Azure at retention expiry.
 
