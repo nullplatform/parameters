@@ -92,6 +92,42 @@ EOF
   assert_contains "$secret_name" "application-321402625-country-arg-environment-prod-42"
 }
 
+@test "azure-key-vault store: uses value_entities and includes scope" {
+  export CONTEXT='{
+    "parameter_id": 7,
+    "value_entities": { "application": "100", "scope": "200" },
+    "dimensions": {}
+  }'
+
+  run bash -c "$DEPS; source $SCRIPT"
+
+  assert_equal "$status" "0"
+  secret_name=$(echo "$output" | jq -r '.metadata.secret_name')
+  assert_equal "$secret_name" "application-100-scope-200-7"
+}
+
+@test "azure-key-vault store: name at exactly 127 chars is allowed" {
+  # "application-321402625" (21) + "-" + <name> + "-42" (3) = 25 + len(name); 102 → 127.
+  pname=$(printf 'a%.0s' $(seq 1 102))
+  export CONTEXT=$(echo "$CONTEXT" | jq --arg n "$pname" '.parameter_name = $n')
+
+  run bash -c "$DEPS; source $SCRIPT"
+
+  assert_equal "$status" "0"
+  secret_name=$(echo "$output" | jq -r '.metadata.secret_name')
+  assert_equal "${#secret_name}" "127"
+}
+
+@test "azure-key-vault store: name at 128 chars fails" {
+  pname=$(printf 'a%.0s' $(seq 1 103))
+  export CONTEXT=$(echo "$CONTEXT" | jq --arg n "$pname" '.parameter_name = $n')
+
+  run bash -c "$DEPS; source $SCRIPT"
+
+  [ "$status" -ne 0 ]
+  assert_contains "$output" "exceeds Azure Key Vault's 127-character limit"
+}
+
 @test "azure-key-vault store: name over 127 chars fails with a clear error" {
   # A long parameter name pushes the total over AKV's 127-char limit.
   long_name=$(printf 'x%.0s' $(seq 1 150))

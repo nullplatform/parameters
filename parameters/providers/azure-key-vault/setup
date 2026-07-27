@@ -37,9 +37,10 @@ AZ_VAULT_URL="https://${AZ_VAULT_NAME}.vault.azure.net"
 
 # Service-principal credentials are sensitive → env only, never provider config.
 AZURE_CLIENT_ID=$(get_config_value --env AZURE_CLIENT_ID)
+AZURE_CLIENT_SECRET=$(get_config_value --env AZURE_CLIENT_SECRET)
 AZURE_TENANT_ID=$(get_config_value --env AZURE_TENANT_ID)
 
-if [ -z "$AZURE_CLIENT_ID" ] || [ -z "${AZURE_CLIENT_SECRET:-}" ] || [ -z "$AZURE_TENANT_ID" ]; then
+if [ -z "$AZURE_CLIENT_ID" ] || [ -z "$AZURE_CLIENT_SECRET" ] || [ -z "$AZURE_TENANT_ID" ]; then
   log error "❌ Azure service principal credentials not configured"
   log error ""
   log error "💡 Possible causes:"
