@@ -33,6 +33,18 @@ if [ -z "$AZ_VAULT_NAME" ]; then
   exit 1
 fi
 
+# The agent runtime may provide the Azure CLI through mise rather than on the
+# base PATH. Resolve `az` here and export the adjusted PATH so both this login
+# and the store/retrieve/delete steps (which inherit setup's environment) find
+# the binary. setup always runs first, so fixing it here is enough.
+if ! command -v az >/dev/null 2>&1 && command -v mise >/dev/null 2>&1; then
+  az_bin=$(mise which az 2>/dev/null || true)
+  if [ -n "$az_bin" ]; then
+    az_dir=$(dirname "$az_bin")
+    export PATH="$az_dir:$PATH"
+  fi
+fi
+
 # Service-principal login (optional; see the header note above). Skipped when a
 # session already exists (managed identity or a prior `az login`).
 #
