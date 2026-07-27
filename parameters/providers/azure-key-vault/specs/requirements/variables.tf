@@ -48,6 +48,17 @@ variable "service_principal" {
     ])
     error_message = "Each service_principal.key_vault_ids entry must be a full Key Vault resource ID (/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.KeyVault/vaults/<name>), so the role assignment is scoped to the vault and not a broader scope."
   }
+
+  # Restrict to Key Vault data-plane roles so an accidental "Owner"/"Contributor"
+  # can't grant control-plane access at vault scope. Edit this list if you use a
+  # custom data-plane role.
+  validation {
+    condition = !var.service_principal.enable || contains(
+      ["Key Vault Secrets Officer", "Key Vault Secrets User", "Key Vault Reader"],
+      var.service_principal.role
+    )
+    error_message = "service_principal.role must be a Key Vault data-plane role (Key Vault Secrets Officer / Secrets User / Reader); management roles like Owner or Contributor are not allowed."
+  }
 }
 
 variable "key_vault" {

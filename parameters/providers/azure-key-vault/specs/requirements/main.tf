@@ -54,7 +54,6 @@ resource "azurerm_key_vault" "this" {
   }
 }
 
-
 ################################################################################
 # Wiring example: connect this module to the nullplatform agent (service
 # principal auth). This block is COMMENTED OUT on purpose — uncommenting it would
