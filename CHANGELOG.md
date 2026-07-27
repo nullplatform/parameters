@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add support to manage (store, retrieve and delete) parameters from Azure Key Vault.
 - Add the Azure Key Vault install tofu module (`specs/install/`) built on the shared parameter-storage modules, plus a `specs/requirements/` module that assigns the Key Vault Secrets Officer RBAC role to an existing Azure AD service principal (bring-your-own; the client secret is never handled by tofu) and can optionally create the Key Vault itself (`key_vault.enable`, an independent toggle) with the RBAC authorization model and hardened defaults.
-- Azure Key Vault `setup` authenticates the Azure CLI with a service principal when `AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET` / `AZURE_TENANT_ID` are set.
+- Azure Key Vault store/retrieve/delete operate on secrets through the Key Vault REST API with `curl` (no Azure CLI to install at runtime), authenticating the service principal via an OAuth2 client-credentials token from `AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET` / `AZURE_TENANT_ID`.
 
 ### Fixed
 

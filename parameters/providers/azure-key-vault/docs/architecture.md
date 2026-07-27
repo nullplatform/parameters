@@ -86,13 +86,36 @@ If the identity lacks `Purge` permission, purge fails with a warning but delete 
 ## Authentication
 
 The agent authenticates to Azure as a service principal and talks to Key Vault
-over the **data-plane REST API with `curl`** — no Azure CLI is used, so there is
-nothing to install at runtime. `setup` runs the OAuth2 client-credentials flow
-against Azure AD (`POST login.microsoftonline.com/<tenant>/oauth2/v2.0/token`,
-scope `https://vault.azure.net/.default`) using `AZURE_CLIENT_ID` /
+over the **data-plane REST API with `curl`** — no Azure CLI is used. `setup` runs
+the OAuth2 client-credentials flow against Azure AD
+(`POST login.microsoftonline.com/<tenant>/oauth2/v2.0/token`, scope
+`https://vault.azure.net/.default`) using `AZURE_CLIENT_ID` /
 `AZURE_CLIENT_SECRET` / `AZURE_TENANT_ID`, and exports the resulting bearer token
 as `AZ_ACCESS_TOKEN`. The `store`/`retrieve`/`delete` steps send it in the
 `Authorization: Bearer` header against `<vault>.vault.azure.net`.
+
+### Why REST/`curl` instead of the Azure CLI
+
+The nullplatform agent runtime does **not** ship the Azure CLI (`az`). The
+obvious alternative — installing it at runtime through the agent's tool manager
+(`mise`) — proved unworkable:
+
+- `az` is a heavy Python CLI. `mise`'s `azure-cli` resolves to either an asdf
+  plugin that **clones from GitHub** or a `pipx`/PyPI install — both need egress
+  to public package registries.
+- Real clusters are network-restricted. In the deployment that drove this
+  design, the agent pods had **no egress to GitHub or PyPI** (org security
+  policy), so every install path failed (`mise ... IO error` / `dns error`).
+  Even where egress exists, installing `az` on **every** parameter operation is
+  slow and fragile.
+
+The Key Vault data plane is a plain REST API, so `curl` (always present in the
+runtime) plus a client-credentials token is all that's needed. This removes the
+runtime-install dependency entirely and only requires egress to the two
+endpoints the agent must reach anyway: Azure AD (`login.microsoftonline.com`,
+for the token) and the vault (`<vault>.vault.azure.net`, reachable publicly or
+via a private endpoint). Azure AD cannot be reached through a private endpoint,
+so egress to it is always required.
 
 The client secret is URL-encoded from the environment (via `jq env.*`) and the
 token-request body is sent on **stdin**, so the secret never appears on argv.
