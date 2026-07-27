@@ -156,3 +156,6 @@ override.tf.json
 backend-local.tf
 .terraform/
 .terraform.tfstate.lock.info
+
+# Superpowers planning artifacts (brainstorm/specs/plans) — local only
+docs/superpowers/
