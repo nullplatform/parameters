@@ -8,10 +8,10 @@ This document describes the `parameters/providers/azure-key-vault/` implementati
 
 | Step | What happens                                                                  |
 |------|-------------------------------------------------------------------------------|
-| `setup`     | Reads `AZ_VAULT_NAME`, `AZ_SECRET_PREFIX` (default `nullplatform-`). Validates prefix matches `[A-Za-z0-9-]*`. |
-| `store`     | Composes canonical path via `build_external_id`. Transforms (slash → dash, equals → dash) for AKV naming. Calls `az keyvault secret set` with `--tags managed_by=nullplatform`. Extracts version from the returned id URL. Returns `external_id = <canonical_path>#<version>`. |
-| `retrieve`  | Parses canonical path + version. Re-transforms path to AKV name. Calls `az keyvault secret show` with `--version <V>` if a version is present. |
-| `delete`    | Calls `az keyvault secret delete` + best-effort `purge`. Idempotent. |
+| `setup`     | Reads `AZ_VAULT_NAME`, `AZ_SECRET_PREFIX` (`nullplatform-`). Authenticates the service principal (client-credentials) and exports `AZ_ACCESS_TOKEN` + `AZ_VAULT_URL`. |
+| `store`     | Composes canonical path via `build_external_id`. Transforms (slash → dash, equals → dash) for AKV naming. `PUT /secrets/<name>` with `tags.managed_by=nullplatform`. Extracts version from the returned id URL. Returns `external_id = <canonical_path>#<version>`. |
+| `retrieve`  | Parses canonical path + version. Re-transforms path to AKV name. `GET /secrets/<name>[/<version>]`. |
+| `delete`    | `DELETE /secrets/<name>` (soft-delete) + best-effort `DELETE /deletedsecrets/<name>` (purge). Idempotent. |
 | `notify`    | Not implemented — dispatcher returns default `{success: true}`. |
 
 ---
@@ -85,19 +85,20 @@ If the identity lacks `Purge` permission, purge fails with a warning but delete 
 
 ## Authentication
 
-The agent authenticates to Azure as a service principal. The `setup` script logs
-the Azure CLI in with `az login --service-principal` when the `AZURE_CLIENT_ID` /
-`AZURE_CLIENT_SECRET` / `AZURE_TENANT_ID` env vars are present (the az CLI, unlike
-the Azure SDKs, does not read them automatically); otherwise it relies on an
-existing session (managed identity or a prior `az login`). The secret is briefly
-visible on the `az login` process's argv — see
-[`azure-rbac.md`](./azure-rbac.md#security-notes).
+The agent authenticates to Azure as a service principal and talks to Key Vault
+over the **data-plane REST API with `curl`** — no Azure CLI is used, so there is
+nothing to install at runtime. `setup` runs the OAuth2 client-credentials flow
+against Azure AD (`POST login.microsoftonline.com/<tenant>/oauth2/v2.0/token`,
+scope `https://vault.azure.net/.default`) using `AZURE_CLIENT_ID` /
+`AZURE_CLIENT_SECRET` / `AZURE_TENANT_ID`, and exports the resulting bearer token
+as `AZ_ACCESS_TOKEN`. The `store`/`retrieve`/`delete` steps send it in the
+`Authorization: Bearer` header against `<vault>.vault.azure.net`.
 
-The Azure CLI (`az`) is not assumed to be on the base PATH. When it isn't, `setup`
-installs it through **mise** via the pipx backend (`pipx:azure-cli`, forcing
-classic pipx over uv) and prepends it to the exported PATH so the later steps
-inherit it. This requires the agent to have `mise` and `python`, and egress to
-PyPI.
+The client secret is URL-encoded from the environment (via `jq env.*`) and the
+token-request body is sent on **stdin**, so the secret never appears on argv.
+Likewise the parameter value in `store` travels in the request body on stdin.
+Every call checks the HTTP status (`%{http_code}`) and surfaces the Azure error
+body on failure. Only the Azure public cloud endpoints are assumed.
 
 The service principal needs the `Key Vault Secrets Officer` RBAC role on the vault
 — see [`azure-rbac.md`](./azure-rbac.md). The `specs/requirements/` module can

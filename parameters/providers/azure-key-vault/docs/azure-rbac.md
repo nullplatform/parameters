@@ -67,8 +67,9 @@ vault. Its outputs:
 The service principal's `client_id` / `client_secret` / `tenant_id` are wired into
 the agent as `AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET` / `AZURE_TENANT_ID`
 **directly** — the secret never passes through this module or its tofu state. The
-`setup` script performs an explicit `az login --service-principal` from those env
-vars (the az CLI, unlike the Azure SDKs, does not read them automatically).
+`setup` script runs the OAuth2 client-credentials flow against Azure AD with
+`curl` (no Azure CLI) and exports a short-lived bearer token that
+`store`/`retrieve`/`delete` use against the Key Vault REST API.
 
 ### Creating the vault (optional)
 
@@ -97,11 +98,11 @@ subscription (`ARM_SUBSCRIPTION_ID`) for the `azurerm` provider.
   the SP's object id); the client secret is supplied to the agent directly as
   `AZURE_CLIENT_SECRET`, so it is not written to tofu state. Rotate it at the
   service principal, independently of tofu.
-- **Secret on the CLI process line.** The agent's `setup` passes the secret to
-  `az login --service-principal --password` on argv (the az CLI does not accept it
-  on stdin for non-interactive login), so it is briefly visible in the process
-  table to co-located principals. For stronger isolation prefer certificate-based
-  SP auth, or run the agent in an isolated single-tenant process/container, and do
-  not enable `shareProcessNamespace` on the agent pod.
+- **Secret kept off argv.** The client secret is URL-encoded from the environment
+  and the token-request body is sent to `curl` on stdin, so — unlike the old
+  `az login --password` — the secret never appears on the process's argv. The
+  short-lived bearer token does travel in an `Authorization` header (on argv) for
+  the vault calls; scope pod PID-namespace isolation accordingly and do not enable
+  `shareProcessNamespace` on the agent pod.
 - **Least privilege.** Assign only `Key Vault Secrets Officer` scoped per vault
   (as this module does). Do not grant vault-management roles.

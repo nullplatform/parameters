@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
 # =============================================================================
 # Unit tests for parameters/providers/azure-key-vault/setup
+# Auth is a service-principal client-credentials flow via curl (no az CLI).
 # =============================================================================
 
 setup() {
@@ -12,33 +13,36 @@ setup() {
   export SCRIPT="$PARAMETERS_DIR/providers/azure-key-vault/setup"
   export DEPS="source $PARAMETERS_DIR/utils/log; source $PARAMETERS_DIR/utils/get_config_value"
 
-  # Mock `az`: logs every invocation and lets each subcommand's exit code be
-  # driven per-test. Only exercised by the service-principal login tests — the
-  # other tests never set the SP env vars, so setup never calls az.
+  # Mock `curl`: logs every invocation, writes MOCK_CURL_BODY to the -o file and
+  # prints MOCK_CURL_CODE (the %{http_code} the script reads).
   mkdir -p "$BATS_TEST_TMPDIR/bin"
-  export AZ_LOG="$BATS_TEST_TMPDIR/az.log"
-  cat > "$BATS_TEST_TMPDIR/bin/az" << 'EOF'
+  export CURL_LOG="$BATS_TEST_TMPDIR/curl.log"
+  cat > "$BATS_TEST_TMPDIR/bin/curl" << 'EOF'
 #!/bin/bash
-echo "az $*" >> "$AZ_LOG"
-case "$1" in
-  account) exit "${MOCK_AZ_ACCOUNT_SHOW_EXIT:-0}" ;;
-  login)
-    if [ "${MOCK_AZ_LOGIN_EXIT:-0}" -ne 0 ]; then
-      echo "AADSTS7000215: Invalid client secret provided." >&2
-    fi
-    exit "${MOCK_AZ_LOGIN_EXIT:-0}"
-    ;;
-esac
-exit 0
+echo "curl $*" >> "$CURL_LOG"
+out=""; prev=""
+for a in "$@"; do
+  [ "$prev" = "-o" ] && out="$a"
+  prev="$a"
+done
+[ -n "$out" ] && printf '%s' "${MOCK_CURL_BODY:-}" > "$out"
+printf '%s' "${MOCK_CURL_CODE:-200}"
 EOF
-  chmod +x "$BATS_TEST_TMPDIR/bin/az"
+  chmod +x "$BATS_TEST_TMPDIR/bin/curl"
   export PATH="$BATS_TEST_TMPDIR/bin:$PATH"
+
+  # Sensible defaults so most tests just set the vault name.
+  export AZURE_CLIENT_ID="client-123"
+  export AZURE_CLIENT_SECRET="secret-abc"
+  export AZURE_TENANT_ID="tenant-xyz"
+  export MOCK_CURL_CODE=200
+  export MOCK_CURL_BODY='{"access_token":"tok-abc"}'
 }
 
 teardown() {
-  unset AZURE_KEY_VAULT_NAME AZ_VAULT_NAME AZ_SECRET_PREFIX PROVIDER_CONFIG \
-    AZURE_CLIENT_ID AZURE_CLIENT_SECRET AZURE_TENANT_ID \
-    MOCK_AZ_ACCOUNT_SHOW_EXIT MOCK_AZ_LOGIN_EXIT
+  unset AZURE_KEY_VAULT_NAME AZ_VAULT_NAME AZ_SECRET_PREFIX AZ_VAULT_URL \
+    AZ_ACCESS_TOKEN PROVIDER_CONFIG AZURE_CLIENT_ID AZURE_CLIENT_SECRET \
+    AZURE_TENANT_ID MOCK_CURL_CODE MOCK_CURL_BODY
 }
 
 @test "azure-key-vault setup: fails when vault name is missing" {
@@ -52,16 +56,17 @@ teardown() {
 @test "azure-key-vault setup: vault name from env" {
   export AZURE_KEY_VAULT_NAME="my-vault"
 
-  run bash -c "$DEPS; source $SCRIPT && echo VAULT=\$AZ_VAULT_NAME PREFIX=\$AZ_SECRET_PREFIX"
+  run bash -c "$DEPS; source $SCRIPT && echo VAULT=\$AZ_VAULT_NAME PREFIX=\$AZ_SECRET_PREFIX URL=\$AZ_VAULT_URL TOKEN=\$AZ_ACCESS_TOKEN"
 
   assert_equal "$status" "0"
   assert_contains "$output" "VAULT=my-vault"
   assert_contains "$output" "PREFIX=nullplatform-"
+  assert_contains "$output" "URL=https://my-vault.vault.azure.net"
+  assert_contains "$output" "TOKEN=tok-abc"
 }
 
 @test "azure-key-vault setup: secret_prefix is hardcoded to nullplatform-" {
   export AZURE_KEY_VAULT_NAME="my-vault"
-  # PROVIDER_CONFIG tries to override; ignored
   export PROVIDER_CONFIG='{"secret_prefix":"app-secret-"}'
 
   run bash -c "$DEPS; source $SCRIPT && echo PREFIX=\$AZ_SECRET_PREFIX"
@@ -79,63 +84,34 @@ teardown() {
   assert_contains "$output" "VAULT=cfg-vault"
 }
 
-@test "azure-key-vault setup: logs in with service principal when not authenticated" {
+@test "azure-key-vault setup: requests a token from the Azure AD endpoint" {
   export AZURE_KEY_VAULT_NAME="my-vault"
-  export AZURE_CLIENT_ID="client-123"
-  export AZURE_CLIENT_SECRET="secret-abc"
-  export AZURE_TENANT_ID="tenant-xyz"
-  export MOCK_AZ_ACCOUNT_SHOW_EXIT=1 # not logged in
 
   run bash -c "$DEPS; source $SCRIPT"
 
   assert_equal "$status" "0"
-  captured=$(cat "$AZ_LOG")
-  assert_contains "$captured" "az account show"
-  assert_contains "$captured" "login --service-principal --username client-123 --password secret-abc --tenant tenant-xyz --allow-no-subscriptions"
+  captured=$(cat "$CURL_LOG")
+  assert_contains "$captured" "login.microsoftonline.com/tenant-xyz/oauth2/v2.0/token"
 }
 
-@test "azure-key-vault setup: skips login when already authenticated" {
+@test "azure-key-vault setup: fails when service principal credentials are missing" {
   export AZURE_KEY_VAULT_NAME="my-vault"
-  export AZURE_CLIENT_ID="client-123"
-  export AZURE_CLIENT_SECRET="secret-abc"
-  export AZURE_TENANT_ID="tenant-xyz"
-  export MOCK_AZ_ACCOUNT_SHOW_EXIT=0 # already logged in
-
-  run bash -c "$DEPS; source $SCRIPT"
-
-  assert_equal "$status" "0"
-  captured=$(cat "$AZ_LOG")
-  assert_contains "$captured" "az account show"
-  [[ "$captured" != *"login --service-principal"* ]]
-}
-
-@test "azure-key-vault setup: skips service principal login when only some SP env vars are set" {
-  export AZURE_KEY_VAULT_NAME="my-vault"
-  export AZURE_CLIENT_ID="client-123"
-  # AZURE_CLIENT_SECRET and AZURE_TENANT_ID intentionally left unset — the
-  # guard requires all three, so this must fall through to the default
-  # credential chain (no az call at all) instead of failing or half-logging-in.
-  export MOCK_AZ_ACCOUNT_SHOW_EXIT=1
-
-  run bash -c "$DEPS; source $SCRIPT"
-
-  assert_equal "$status" "0"
-  [ ! -s "$AZ_LOG" ]
-}
-
-@test "azure-key-vault setup: fails with troubleshooting when service principal login fails" {
-  export AZURE_KEY_VAULT_NAME="my-vault"
-  export AZURE_CLIENT_ID="client-123"
-  export AZURE_CLIENT_SECRET="secret-abc"
-  export AZURE_TENANT_ID="tenant-xyz"
-  export MOCK_AZ_ACCOUNT_SHOW_EXIT=1 # not logged in
-  export MOCK_AZ_LOGIN_EXIT=1        # login fails
+  unset AZURE_CLIENT_SECRET
 
   run bash -c "$DEPS; source $SCRIPT"
 
   [ "$status" -ne 0 ]
-  assert_contains "$output" "❌ Azure service principal login failed"
-  assert_contains "$output" "🔧 How to fix:"
-  # The real Azure error must be surfaced, not swallowed.
+  assert_contains "$output" "❌ Azure service principal credentials not configured"
+}
+
+@test "azure-key-vault setup: surfaces the underlying error when auth fails" {
+  export AZURE_KEY_VAULT_NAME="my-vault"
+  export MOCK_CURL_CODE=401
+  export MOCK_CURL_BODY='{"error":"invalid_client","error_description":"AADSTS7000215: Invalid client secret provided."}'
+
+  run bash -c "$DEPS; source $SCRIPT"
+
+  [ "$status" -ne 0 ]
+  assert_contains "$output" "❌ Azure service principal authentication failed (HTTP 401)"
   assert_contains "$output" "Underlying error: AADSTS7000215: Invalid client secret provided."
 }

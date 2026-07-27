@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
 # =============================================================================
 # Unit tests for parameters/providers/azure-key-vault/retrieve
+# Uses the Key Vault REST API via curl (no az CLI).
 # =============================================================================
 
 setup() {
@@ -12,38 +13,30 @@ setup() {
   export SCRIPT="$PARAMETERS_DIR/providers/azure-key-vault/retrieve"
 
   mkdir -p "$BATS_TEST_TMPDIR/bin"
-  export AZ_LOG="$BATS_TEST_TMPDIR/az.log"
-  cat > "$BATS_TEST_TMPDIR/bin/az" << 'EOF'
+  export CURL_LOG="$BATS_TEST_TMPDIR/curl.log"
+  cat > "$BATS_TEST_TMPDIR/bin/curl" << 'EOF'
 #!/bin/bash
-echo "ARGS: $@" >> "$AZ_LOG"
-case "${MOCK_AZ_MODE:-success}" in
-  success)
-    echo "the-stored-value"
-    ;;
-  not_found)
-    echo "(SecretNotFound) A secret with (name/id) X was not found in this key vault." >&2
-    exit 3
-    ;;
-  auth_error)
-    echo "(Forbidden) The user is not authorized to perform this action." >&2
-    exit 1
-    ;;
-  *)
-    echo "(InternalServerError) something went wrong." >&2
-    exit 1
-    ;;
-esac
+echo "curl $*" >> "$CURL_LOG"
+out=""; prev=""
+for a in "$@"; do
+  [ "$prev" = "-o" ] && out="$a"
+  prev="$a"
+done
+[ -n "$out" ] && printf '%s' "${MOCK_CURL_BODY:-}" > "$out"
+printf '%s' "${MOCK_CURL_CODE:-200}"
 EOF
-  chmod +x "$BATS_TEST_TMPDIR/bin/az"
+  chmod +x "$BATS_TEST_TMPDIR/bin/curl"
   export PATH="$BATS_TEST_TMPDIR/bin:$PATH"
 
   export AZ_VAULT_NAME="my-vault"
+  export AZ_VAULT_URL="https://my-vault.vault.azure.net"
+  export AZ_ACCESS_TOKEN="tok-abc"
   export AZ_SECRET_PREFIX="parameters-"
-  export EXTERNAL_ID="abc-123"
-
-  export EXTERNAL_ID_PATH="$EXTERNAL_ID"
+  export EXTERNAL_ID_PATH="abc-123"
   export EXTERNAL_ID_VERSION=""
-  export CONTEXT='{}'
+  export MOCK_CURL_CODE=200
+  export MOCK_CURL_BODY='{"value":"the-stored-value"}'
+
   export DEPS="source $PARAMETERS_DIR/utils/log"
 }
 
@@ -55,8 +48,11 @@ EOF
   assert_equal "$value" "the-stored-value"
 }
 
-@test "azure-key-vault retrieve: SecretNotFound fails with troubleshooting" {
-  run bash -c "$DEPS; MOCK_AZ_MODE=not_found source $SCRIPT"
+@test "azure-key-vault retrieve: 404 fails with troubleshooting" {
+  export MOCK_CURL_CODE=404
+  export MOCK_CURL_BODY='{"error":{"code":"SecretNotFound","message":"A secret with (name/id) was not found."}}'
+
+  run bash -c "$DEPS; source $SCRIPT"
 
   [ "$status" -ne 0 ]
   assert_contains "$output" "not found in Azure Key Vault"
@@ -64,27 +60,41 @@ EOF
   assert_contains "$output" "🔧 How to fix:"
 }
 
-@test "azure-key-vault retrieve: auth_error fails with troubleshooting" {
-  run bash -c "$DEPS; MOCK_AZ_MODE=auth_error source $SCRIPT"
+@test "azure-key-vault retrieve: auth error fails with underlying error" {
+  export MOCK_CURL_CODE=403
+  export MOCK_CURL_BODY='{"error":{"code":"Forbidden","message":"The user is not authorized to perform this action."}}'
+
+  run bash -c "$DEPS; source $SCRIPT"
 
   [ "$status" -ne 0 ]
   assert_contains "$output" "❌ Failed to retrieve secret"
-  assert_contains "$output" "lacks 'Get' permission"
+  assert_contains "$output" "Underlying error: The user is not authorized"
 }
 
 @test "azure-key-vault retrieve: unknown errors fail loud" {
-  run bash -c "$DEPS; MOCK_AZ_MODE=other source $SCRIPT"
+  export MOCK_CURL_CODE=500
+  export MOCK_CURL_BODY='{"error":{"code":"InternalServerError","message":"something went wrong."}}'
+
+  run bash -c "$DEPS; source $SCRIPT"
 
   [ "$status" -ne 0 ]
   assert_contains "$output" "❌ Failed to retrieve secret"
 }
 
-@test "azure-key-vault retrieve: calls az keyvault secret show" {
+@test "azure-key-vault retrieve: GETs the AKV-safe secret URL" {
   run bash -c "$DEPS; source $SCRIPT"
 
-  captured=$(cat "$AZ_LOG")
-  assert_contains "$captured" "keyvault secret show"
-  assert_contains "$captured" "--vault-name my-vault"
-  assert_contains "$captured" "--name parameters-abc-123"
-  assert_contains "$captured" "--query value"
+  captured=$(cat "$CURL_LOG")
+  assert_contains "$captured" "-X GET"
+  assert_contains "$captured" "https://my-vault.vault.azure.net/secrets/parameters-abc-123"
+  assert_contains "$captured" "api-version=7.4"
+}
+
+@test "azure-key-vault retrieve: requests a specific version when present" {
+  export EXTERNAL_ID_VERSION="ver999"
+
+  run bash -c "$DEPS; source $SCRIPT"
+
+  captured=$(cat "$CURL_LOG")
+  assert_contains "$captured" "/secrets/parameters-abc-123/ver999"
 }

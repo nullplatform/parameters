@@ -1,18 +1,19 @@
 #!/bin/bash
 set -euo pipefail
 
-# Stores a parameter as an Azure Key Vault secret.
+# Stores a parameter as an Azure Key Vault secret via the data-plane REST API.
 #
 # Versioning model:
 #   nullplatform parameter values are immutable. Each update is a new VERSION.
-#   Azure Key Vault has native versioning — every `secret set` creates a new
+#   Azure Key Vault has native versioning — every PUT to a secret creates a new
 #   version, all retained inside the same secret. No special logic needed.
 #
 # AKV doesn't allow `/` or `=` in secret names, so the canonical EXTERNAL_ID is
 # transformed (slash → dash, equals → dash) for the secret name. The external_id
 # returned to nullplatform keeps the canonical slash form.
 #
-# Required env: PARAMETER_VALUE, AZ_VAULT_NAME, AZ_SECRET_PREFIX
+# Required env: PARAMETER_VALUE, AZ_VAULT_NAME, AZ_VAULT_URL, AZ_ACCESS_TOKEN,
+#               AZ_SECRET_PREFIX
 
 source "$PARAMETERS_ROOT/utils/build_external_id"
 build_external_id
@@ -21,33 +22,36 @@ build_external_id
 AKV_SUFFIX=$(echo "$EXTERNAL_ID" | tr '/=' '--')
 SECRET_NAME="${AZ_SECRET_PREFIX}${AKV_SUFFIX}"
 
-err_file=$(mktemp)
-if ! AKV_ID=$(az keyvault secret set \
-        --vault-name "$AZ_VAULT_NAME" \
-        --name "$SECRET_NAME" \
-        --value "$PARAMETER_VALUE" \
-        --tags "managed_by=nullplatform" \
-        --query id \
-        --output tsv 2>"$err_file"); then
-  err=$(cat "$err_file")
-  rm -f "$err_file"
-  log error "❌ Failed to store secret in Azure Key Vault '$AZ_VAULT_NAME'"
+# The body carries the value; jq reads it from the environment (off argv) and the
+# whole payload is sent to curl on stdin.
+PAYLOAD=$(jq -n '{value: env.PARAMETER_VALUE, tags: {managed_by: "nullplatform"}}')
+
+resp_file=$(mktemp)
+http_code=$(curl -s -o "$resp_file" -w '%{http_code}' \
+  -X PUT "$AZ_VAULT_URL/secrets/$SECRET_NAME?api-version=7.4" \
+  -H "Authorization: Bearer $AZ_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  --data-binary @- <<<"$PAYLOAD") || http_code="000"
+resp=$(cat "$resp_file")
+rm -f "$resp_file"
+
+if [ "$http_code" != "200" ]; then
+  log error "❌ Failed to store secret in Azure Key Vault '$AZ_VAULT_NAME' (HTTP $http_code)"
   log error ""
   log error "💡 Possible causes:"
-  log error "   • Identity lacks Set permission on $AZ_VAULT_NAME"
-  log error "   • Vault is in soft-deleted state or firewall blocks the caller"
+  log error "   • The service principal lacks Set permission on $AZ_VAULT_NAME"
+  log error "   • The vault firewall blocks the caller, or the token expired"
   log error "   • Secret name length exceeds AKV limit of 127 chars (current: ${#SECRET_NAME})"
   log error ""
   log error "🔧 How to fix:"
-  log error "   • Verify identity: az account show"
-  log error "   • Check access policy: az keyvault show --name $AZ_VAULT_NAME --query properties.accessPolicies"
-  log error "Underlying error: $err"
+  log error "   • Confirm the SP has the Key Vault Secrets Officer role on the vault"
+  log error "Underlying error: $(echo "$resp" | jq -r '.error.message // "unknown error"' 2>/dev/null | head -1)"
   exit 1
 fi
-rm -f "$err_file"
 
 # AKV id URL format: https://<vault>.vault.azure.net/secrets/<name>/<version>
 # The last path component is the version id (hex string).
+AKV_ID=$(echo "$resp" | jq -r '.id // empty')
 VERSION_ID="${AKV_ID##*/}"
 
 # Encode version into external_id (the canonical handle nullplatform persists).
