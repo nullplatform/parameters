@@ -1,4 +1,4 @@
-nrn        = "organization=acme-1255165411:account=prod-95118862"
+nrn        = "organization=1:account=2"
 np_api_key = "REPLACE_ME"
 
 extra_visible_to_nrns = []
@@ -10,7 +10,7 @@ extra_visible_to_nrns = []
 
 instances = {
   prod-billing = {
-    nrn        = "organization=acme-1255165411:account=prod-95118862:namespace=billing-37094320"
+    nrn        = "organization=1:account=2:namespace=3"
     dimensions = { environment = "production" }
     # Each instance gets its own agent API key + notification channel anchored at its nrn (default).
     tags_selectors = { environment = "production" }
@@ -24,7 +24,7 @@ instances = {
     }
   }
   staging-billing = {
-    nrn        = "organization=acme-1255165411:account=staging-95118863:namespace=billing-37094320"
+    nrn        = "organization=1:account=2:namespace=3"
     dimensions = { environment = "staging" }
     # Skip the agent channel + API key for this instance (e.g. managed elsewhere).
     enable_notification_channel = false
