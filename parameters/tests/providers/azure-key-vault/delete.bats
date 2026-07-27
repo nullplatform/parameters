@@ -88,6 +88,18 @@ EOF
   assert_contains "$stderr" "Purge permission missing"
 }
 
+@test "azure-key-vault delete: purge 409 (purge protection) is expected, no warning" {
+  export MOCK_PURGE_CODE=409
+  export MOCK_PURGE_BODY='{"error":{"code":"Conflict","message":"purge protection is enabled."}}'
+
+  run --separate-stderr bash -c "$DEPS; source $SCRIPT"
+
+  assert_equal "$status" "0"
+  success=$(echo "$output" | jq -r '.success')
+  assert_equal "$success" "true"
+  [[ "$stderr" != *"⚠️"* ]]
+}
+
 @test "azure-key-vault delete: purge other failure is warning, still success" {
   export MOCK_PURGE_CODE=500
   export MOCK_PURGE_BODY='{"error":{"code":"InternalServerError","message":"boom."}}'
