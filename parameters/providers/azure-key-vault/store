@@ -26,7 +26,11 @@ build_akv_name() {
   local entities_json
   entities_json=$(echo "$CONTEXT" | jq -c '.value_entities // .entities // {}')
 
-  local entity_order=("organization" "account" "namespace" "application" "scope")
+  # Start at application: the vault is already scoped to an org/account/namespace
+  # context, so those upper entities are redundant here. application + parameter
+  # ids are globally unique, so the value is still addressed unambiguously, and
+  # the name stays well under AKV's 127-char limit.
+  local entity_order=("application" "scope")
   local segments=()
 
   local entity_type entity_id

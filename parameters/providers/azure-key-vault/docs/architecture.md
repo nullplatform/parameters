@@ -20,14 +20,14 @@ This document describes the `parameters/providers/azure-key-vault/` implementati
 
 **The AKV secret name IS the `external_id`** — there is no separate transform. `store` builds the name, returns it verbatim as the `external_id`, and `retrieve`/`delete` use `external_id` directly as the secret name. This keeps the two identical (no lossy mapping to reverse).
 
-AKV secret names allow only `[A-Za-z0-9-]` and are capped at **127 characters**. To fit that budget the name is built **slug-free**: the entity path uses only the NRN ids (not the `<slug>-<id>` form the shared `build_external_id` produces for other providers), joined with dashes, no `nullplatform-` prefix:
+AKV secret names allow only `[A-Za-z0-9-]` and are capped at **127 characters**. To fit that budget the name is built **slug-free** and **starts at `application`** — the upper entities (`organization`, `account`, `namespace`) are dropped because the vault is already scoped to that context, and the `application` + `parameter` ids are globally unique so the value is still addressed unambiguously:
 
 ```
-organization-1255165411-account-95118862-namespace-37094320-application-321402625[-scope-<id>][-<dimKey>-<dimVal>...]-<paramName>-<paramId>
+application-321402625[-scope-<id>][-<dimKey>-<dimVal>...]-<paramName>-<paramId>
 ```
 
-- Entity **type names are kept** (`organization-`, `account-`, …) for readability and so the name starts with a letter; only the human-readable **slugs are dropped** — the ids already identify the resource uniquely (slugs are immutable but redundant here).
-- Entities are in canonical NRN order (`organization`, `account`, `namespace`, `application`, `scope`); dimensions are sorted alphabetically; the parameter is `<name>-<id>`.
+- Only the NRN **ids** are used (not the `<slug>-<id>` form the shared `build_external_id` produces for other providers). Entity **type names are kept** (`application-`, `scope-`) for readability.
+- Entities in canonical NRN order from `application` onward (`application`, `scope`); dimensions sorted alphabetically; the parameter is `<name>-<id>`.
 - Every segment is sanitized to `[A-Za-z0-9-]` (any other char → `-`).
 
 `store` **validates the 127-char limit before calling AKV** and fails with a clear error if a deeply-nested scope with many/long dimensions or a long parameter name overflows it.
@@ -49,7 +49,7 @@ The `external_id` returned by `store` is the secret name plus the version:
 For Azure Key Vault, `version_id` is **the literal hex string version returned by AKV** — we do not invent or normalize it. AKV returns the secret's id as a URL like `https://my-vault.vault.azure.net/secrets/my-secret/93a0b2eb12a64fa7b3acb18900a8d33d`; we extract the last path segment. Real example:
 
 ```
-organization-1255165411-account-95118862-namespace-37094320-DB-PASSWORD-42#93a0b2eb12a64fa7b3acb18900a8d33d
+application-321402625-DB-PASSWORD-42#93a0b2eb12a64fa7b3acb18900a8d33d
 ```
 
 That 32-char hex string is the AKV version identifier. It maps to the REST path `GET /secrets/<name>/93a0b2eb12a64fa7b3acb18900a8d33d` to fetch that specific historical version.

@@ -56,7 +56,7 @@ EOF
 
   assert_equal "$status" "0"
   external_id=$(echo "$output" | jq -r '.external_id')
-  expected="organization-1255165411-account-95118862-namespace-37094320-application-321402625-42#abc123"
+  expected="application-321402625-42#abc123"
   assert_equal "$external_id" "$expected"
 }
 
@@ -65,7 +65,7 @@ EOF
 
   assert_equal "$status" "0"
   secret_name=$(echo "$output" | jq -r '.metadata.secret_name')
-  assert_equal "$secret_name" "organization-1255165411-account-95118862-namespace-37094320-application-321402625-42"
+  assert_equal "$secret_name" "application-321402625-42"
   # No slugs and no nullplatform- prefix.
   [[ "$secret_name" != *"nullplatform-"* ]]
   [[ "$secret_name" != *"/"* ]]
@@ -77,7 +77,7 @@ EOF
 
   captured=$(cat "$CURL_LOG")
   assert_contains "$captured" "-X PUT"
-  assert_contains "$captured" "https://my-vault.vault.azure.net/secrets/organization-1255165411-account-95118862"
+  assert_contains "$captured" "https://my-vault.vault.azure.net/secrets/application-321402625"
   assert_contains "$captured" "api-version=7.4"
   # The value travels in the body via stdin — it must NOT appear on argv.
   [[ "$captured" != *"my-secret"* ]]
