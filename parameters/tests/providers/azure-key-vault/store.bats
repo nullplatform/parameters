@@ -111,3 +111,14 @@ EOF
   assert_contains "$output" "❌ Failed to store secret in Azure Key Vault"
   assert_contains "$output" "Underlying error: Caller is not authorized"
 }
+
+@test "azure-key-vault store: HTTP 000 reports a connectivity error, not an empty one" {
+  export MOCK_CURL_CODE=000
+  export MOCK_CURL_BODY=''
+
+  run bash -c "$DEPS; source $SCRIPT"
+
+  [ "$status" -ne 0 ]
+  assert_contains "$output" "(HTTP 000)"
+  assert_contains "$output" "could not connect to https://my-vault.vault.azure.net"
+}

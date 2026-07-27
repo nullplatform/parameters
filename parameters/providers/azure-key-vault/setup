@@ -79,7 +79,11 @@ if [ "$http_code" != "200" ]; then
   log error ""
   log error "🔧 How to fix:"
   log error "   • Verify the service principal credentials passed to the agent"
-  log error "Underlying error: $(echo "$token_resp" | jq -r '.error_description // .error // "unknown error"' 2>/dev/null | head -1)"
+  if [ "$http_code" = "000" ]; then
+    log error "Underlying error: could not connect to login.microsoftonline.com — no HTTP response (the agent has no network egress to Azure AD; this endpoint cannot be reached via a private endpoint)"
+  else
+    log error "Underlying error: $(echo "$token_resp" | jq -r '.error_description // .error // "unknown error"' 2>/dev/null | head -1)"
+  fi
   exit 1
 fi
 

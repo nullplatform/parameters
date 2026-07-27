@@ -36,7 +36,11 @@ elif [ "$http_code" != "200" ]; then
   log error ""
   log error "🔧 How to fix:"
   log error "   • Confirm the SP has the Key Vault Secrets Officer role on the vault"
-  log error "Underlying error: $(echo "$resp" | jq -r '.error.message // "unknown error"' 2>/dev/null | head -1)"
+  if [ "$http_code" = "000" ]; then
+    log error "Underlying error: could not connect to $AZ_VAULT_URL — no HTTP response (DNS, network egress, or the vault is unreachable: no route / no private endpoint from here)"
+  else
+    log error "Underlying error: $(echo "$resp" | jq -r '.error.message // "unknown error"' 2>/dev/null | head -1)"
+  fi
   exit 1
 fi
 
