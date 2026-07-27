@@ -31,8 +31,7 @@ EOF
   export AZ_VAULT_NAME="my-vault"
   export AZ_VAULT_URL="https://my-vault.vault.azure.net"
   export AZ_ACCESS_TOKEN="tok-abc"
-  export AZ_SECRET_PREFIX="parameters-"
-  export EXTERNAL_ID_PATH="abc-123"
+  export EXTERNAL_ID_PATH="organization-1-account-2-42"
   export EXTERNAL_ID_VERSION=""
   export MOCK_CURL_CODE=200
   export MOCK_CURL_BODY='{"value":"the-stored-value"}'
@@ -81,12 +80,12 @@ EOF
   assert_contains "$output" "❌ Failed to retrieve secret"
 }
 
-@test "azure-key-vault retrieve: GETs the AKV-safe secret URL" {
+@test "azure-key-vault retrieve: GETs the secret URL from external_id verbatim" {
   run bash -c "$DEPS; source $SCRIPT"
 
   captured=$(cat "$CURL_LOG")
   assert_contains "$captured" "-X GET"
-  assert_contains "$captured" "https://my-vault.vault.azure.net/secrets/parameters-abc-123"
+  assert_contains "$captured" "https://my-vault.vault.azure.net/secrets/organization-1-account-2-42"
   assert_contains "$captured" "api-version=7.4"
 }
 
@@ -96,5 +95,5 @@ EOF
   run bash -c "$DEPS; source $SCRIPT"
 
   captured=$(cat "$CURL_LOG")
-  assert_contains "$captured" "/secrets/parameters-abc-123/ver999"
+  assert_contains "$captured" "/secrets/organization-1-account-2-42/ver999"
 }

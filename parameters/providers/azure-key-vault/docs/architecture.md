@@ -8,9 +8,9 @@ This document describes the `parameters/providers/azure-key-vault/` implementati
 
 | Step | What happens                                                                  |
 |------|-------------------------------------------------------------------------------|
-| `setup`     | Reads `AZ_VAULT_NAME`, `AZ_SECRET_PREFIX` (`nullplatform-`). Authenticates the service principal (client-credentials) and exports `AZ_ACCESS_TOKEN` + `AZ_VAULT_URL`. |
-| `store`     | Composes canonical path via `build_external_id`. Transforms (slash → dash, equals → dash) for AKV naming. `PUT /secrets/<name>` with `tags.managed_by=nullplatform`. Extracts version from the returned id URL. Returns `external_id = <canonical_path>#<version>`. |
-| `retrieve`  | Parses canonical path + version. Re-transforms path to AKV name. `GET /secrets/<name>[/<version>]`. |
+| `setup`     | Reads `AZ_VAULT_NAME`. Authenticates the service principal (client-credentials) and exports `AZ_ACCESS_TOKEN` + `AZ_VAULT_URL`. |
+| `store`     | Builds the slug-free secret name (= `external_id`; see Storage layout), validates the 127-char limit, `PUT /secrets/<name>` with `tags.managed_by=nullplatform`. Extracts version from the returned id URL. Returns `external_id = <name>#<version>`. |
+| `retrieve`  | Uses `external_id` (path part) as the secret name verbatim. `GET /secrets/<name>[/<version>]`. |
 | `delete`    | `DELETE /secrets/<name>` (soft-delete) + best-effort `DELETE /deletedsecrets/<name>` (purge). Idempotent. |
 | `notify`    | Not implemented — dispatcher returns default `{success: true}`. |
 
@@ -18,18 +18,19 @@ This document describes the `parameters/providers/azure-key-vault/` implementati
 
 ## Storage layout
 
-AKV secret names allow only alphanumerics and dashes (no slashes, no equals, no underscores). The canonical path from `build_external_id` contains slashes and equals, so we transform it:
+**The AKV secret name IS the `external_id`** — there is no separate transform. `store` builds the name, returns it verbatim as the `external_id`, and `retrieve`/`delete` use `external_id` directly as the secret name. This keeps the two identical (no lossy mapping to reverse).
+
+AKV secret names allow only `[A-Za-z0-9-]` and are capped at **127 characters**. To fit that budget the name is built **slug-free**: the entity path uses only the NRN ids (not the `<slug>-<id>` form the shared `build_external_id` produces for other providers), joined with dashes, no `nullplatform-` prefix:
 
 ```
-canonical:  organization=acme-1255165411/account=prod-95118862/.../DB_PASSWORD-42
-AKV name:   nullplatform-organization-acme-1255165411-account-prod-95118862-...-DB_PASSWORD-42
+organization-1255165411-account-95118862-namespace-37094320-application-321402625[-scope-<id>][-<dimKey>-<dimVal>...]-<paramName>-<paramId>
 ```
 
-The transformation is `/=` → `-`, deterministic. The canonical form (with `/` and `=`) is what nullplatform sees in `external_id`; the AKV-safe form is only used internally to address the secret.
+- Entity **type names are kept** (`organization-`, `account-`, …) for readability and so the name starts with a letter; only the human-readable **slugs are dropped** — the ids already identify the resource uniquely (slugs are immutable but redundant here).
+- Entities are in canonical NRN order (`organization`, `account`, `namespace`, `application`, `scope`); dimensions are sorted alphabetically; the parameter is `<name>-<id>`.
+- Every segment is sanitized to `[A-Za-z0-9-]` (any other char → `-`).
 
-The canonical path follows the standard convention: required entities `organization`, `account`, `namespace`, `application`, plus the optional `scope` entity (when the parameter is bound to a deployment scope), plus optional dimensions (zero or more, sorted alphabetically). See `parameters/docs/architecture.md` for the complete naming convention.
-
-Max secret name length in AKV is 127 characters. The provider checks this and surfaces a helpful error if exceeded.
+`store` **validates the 127-char limit before calling AKV** and fails with a clear error if a deeply-nested scope with many/long dimensions or a long parameter name overflows it.
 
 ---
 
@@ -39,16 +40,16 @@ AKV has native versioning. Every write (`PUT /secrets/<name>`) creates a new ver
 
 ### Version identity in external_id
 
-The `external_id` returned by `store` encodes both the path and the version:
+The `external_id` returned by `store` is the secret name plus the version:
 
 ```
-<canonical_path>#<version_id>
+<secret_name>#<version_id>
 ```
 
 For Azure Key Vault, `version_id` is **the literal hex string version returned by AKV** — we do not invent or normalize it. AKV returns the secret's id as a URL like `https://my-vault.vault.azure.net/secrets/my-secret/93a0b2eb12a64fa7b3acb18900a8d33d`; we extract the last path segment. Real example:
 
 ```
-organization=acme-1255165411/.../DB_PASSWORD-42#93a0b2eb12a64fa7b3acb18900a8d33d
+organization-1255165411-account-95118862-namespace-37094320-DB-PASSWORD-42#93a0b2eb12a64fa7b3acb18900a8d33d
 ```
 
 That 32-char hex string is the AKV version identifier. It maps to the REST path `GET /secrets/<name>/93a0b2eb12a64fa7b3acb18900a8d33d` to fetch that specific historical version.
@@ -78,8 +79,7 @@ If the identity lacks `Purge` permission, purge fails with a warning but delete 
 
 ```json
 {
-  "vault_name":    "my-keyvault",
-  "secret_prefix": "nullplatform-"
+  "vault_name": "my-keyvault"
 }
 ```
 

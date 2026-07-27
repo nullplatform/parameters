@@ -40,7 +40,7 @@ EOF
 }
 
 teardown() {
-  unset AZURE_KEY_VAULT_NAME AZ_VAULT_NAME AZ_SECRET_PREFIX AZ_VAULT_URL \
+  unset AZURE_KEY_VAULT_NAME AZ_VAULT_NAME AZ_VAULT_URL \
     AZ_ACCESS_TOKEN PROVIDER_CONFIG AZURE_CLIENT_ID AZURE_CLIENT_SECRET \
     AZURE_TENANT_ID MOCK_CURL_CODE MOCK_CURL_BODY
 }
@@ -56,23 +56,12 @@ teardown() {
 @test "azure-key-vault setup: vault name from env" {
   export AZURE_KEY_VAULT_NAME="my-vault"
 
-  run bash -c "$DEPS; source $SCRIPT && echo VAULT=\$AZ_VAULT_NAME PREFIX=\$AZ_SECRET_PREFIX URL=\$AZ_VAULT_URL TOKEN=\$AZ_ACCESS_TOKEN"
+  run bash -c "$DEPS; source $SCRIPT && echo VAULT=\$AZ_VAULT_NAME URL=\$AZ_VAULT_URL TOKEN=\$AZ_ACCESS_TOKEN"
 
   assert_equal "$status" "0"
   assert_contains "$output" "VAULT=my-vault"
-  assert_contains "$output" "PREFIX=nullplatform-"
   assert_contains "$output" "URL=https://my-vault.vault.azure.net"
   assert_contains "$output" "TOKEN=tok-abc"
-}
-
-@test "azure-key-vault setup: secret_prefix is hardcoded to nullplatform-" {
-  export AZURE_KEY_VAULT_NAME="my-vault"
-  export PROVIDER_CONFIG='{"secret_prefix":"app-secret-"}'
-
-  run bash -c "$DEPS; source $SCRIPT && echo PREFIX=\$AZ_SECRET_PREFIX"
-
-  assert_equal "$status" "0"
-  assert_contains "$output" "PREFIX=nullplatform-"
 }
 
 @test "azure-key-vault setup: vault_name from PROVIDER_CONFIG" {

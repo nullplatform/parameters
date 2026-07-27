@@ -3,9 +3,6 @@ set -euo pipefail
 
 # Validates Azure Key Vault connection config and authenticates.
 #
-# The secret prefix is hardcoded to `nullplatform-` — invariant namespace for
-# all platform secrets in this vault. Only the vault name is operator-configurable.
-#
 # Auth is a service-principal client-credentials OAuth2 flow against Azure AD,
 # done with curl against the REST API — no Azure CLI (and therefore no runtime
 # CLI install) is required. The client secret is URL-encoded from the environment
@@ -17,13 +14,11 @@ set -euo pipefail
 # Assumes the Azure public cloud endpoints (login.microsoftonline.com,
 # <vault>.vault.azure.net).
 #
-# Exports: AZ_VAULT_NAME, AZ_SECRET_PREFIX, AZ_VAULT_URL, AZ_ACCESS_TOKEN
+# Exports: AZ_VAULT_NAME, AZ_VAULT_URL, AZ_ACCESS_TOKEN
 
 AZ_VAULT_NAME=$(get_config_value \
   --env AZURE_KEY_VAULT_NAME \
   --provider '.setup.vault_name')
-
-AZ_SECRET_PREFIX="nullplatform-"
 
 if [ -z "$AZ_VAULT_NAME" ]; then
   log error "❌ Azure Key Vault name not configured"
@@ -96,4 +91,4 @@ if [ -z "$AZ_ACCESS_TOKEN" ]; then
   exit 1
 fi
 
-export AZ_VAULT_NAME AZ_SECRET_PREFIX AZ_VAULT_URL AZ_ACCESS_TOKEN
+export AZ_VAULT_NAME AZ_VAULT_URL AZ_ACCESS_TOKEN

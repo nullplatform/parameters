@@ -41,8 +41,7 @@ EOF
   export AZ_VAULT_NAME="my-vault"
   export AZ_VAULT_URL="https://my-vault.vault.azure.net"
   export AZ_ACCESS_TOKEN="tok-abc"
-  export AZ_SECRET_PREFIX="parameters-"
-  export EXTERNAL_ID_PATH="abc-123"
+  export EXTERNAL_ID_PATH="organization-1-account-2-42"
   export DEPS="source $PARAMETERS_DIR/utils/log"
 }
 
@@ -105,8 +104,8 @@ EOF
   run bash -c "$DEPS; source $SCRIPT"
 
   captured=$(cat "$CURL_LOG")
-  assert_contains "$captured" "/secrets/parameters-abc-123"
-  assert_contains "$captured" "/deletedsecrets/parameters-abc-123"
+  assert_contains "$captured" "/secrets/organization-1-account-2-42"
+  assert_contains "$captured" "/deletedsecrets/organization-1-account-2-42"
 }
 
 @test "azure-key-vault delete: skips purge if delete returned 404" {
@@ -117,7 +116,7 @@ EOF
 
   assert_equal "$status" "0"
   captured=$(cat "$CURL_LOG")
-  assert_contains "$captured" "/secrets/parameters-abc-123"
+  assert_contains "$captured" "/secrets/organization-1-account-2-42"
   # Purge must NOT have been attempted after a 404 delete.
   [[ "$captured" != *"deletedsecrets"* ]]
 }

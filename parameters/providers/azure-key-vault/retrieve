@@ -3,12 +3,13 @@ set -euo pipefail
 
 # Retrieves a secret from Azure Key Vault by external_id via the REST API.
 #
+# The AKV secret name IS the external_id (built slug-free by store, no prefix or
+# transform), so EXTERNAL_ID_PATH is used verbatim as the secret name.
+#
 # Required env: EXTERNAL_ID_PATH, EXTERNAL_ID_VERSION (set by build_context),
-#               AZ_VAULT_NAME, AZ_VAULT_URL, AZ_ACCESS_TOKEN, AZ_SECRET_PREFIX
+#               AZ_VAULT_NAME, AZ_VAULT_URL, AZ_ACCESS_TOKEN
 
-# AKV stores with dashes (no `/` or `=`); transform from canonical path.
-AKV_SUFFIX=$(echo "$EXTERNAL_ID_PATH" | tr '/=' '--')
-SECRET_NAME="${AZ_SECRET_PREFIX}${AKV_SUFFIX}"
+SECRET_NAME="$EXTERNAL_ID_PATH"
 
 # A specific version is an extra path segment; without it AKV returns the latest.
 secret_path="secrets/$SECRET_NAME"

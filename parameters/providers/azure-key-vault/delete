@@ -4,12 +4,12 @@ set -euo pipefail
 # Deletes a secret from Azure Key Vault via the REST API. Idempotent.
 # Soft-delete + purge (purge is best-effort, downgraded to warning on failure).
 #
-# Required env: EXTERNAL_ID_PATH, AZ_VAULT_NAME, AZ_VAULT_URL, AZ_ACCESS_TOKEN,
-#               AZ_SECRET_PREFIX
+# The AKV secret name IS the external_id (built slug-free by store, no prefix or
+# transform), so EXTERNAL_ID_PATH is used verbatim as the secret name.
+#
+# Required env: EXTERNAL_ID_PATH, AZ_VAULT_NAME, AZ_VAULT_URL, AZ_ACCESS_TOKEN
 
-# AKV stores with dashes (no `/` or `=`); transform from canonical form.
-AKV_SUFFIX=$(echo "$EXTERNAL_ID_PATH" | tr '/=' '--')
-SECRET_NAME="${AZ_SECRET_PREFIX}${AKV_SUFFIX}"
+SECRET_NAME="$EXTERNAL_ID_PATH"
 
 # Soft-delete.
 resp_file=$(mktemp)
