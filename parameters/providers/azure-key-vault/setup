@@ -34,13 +34,20 @@ if [ -z "$AZ_VAULT_NAME" ]; then
 fi
 
 # The agent runtime manages CLIs through mise, not on the base PATH. Ensure the
-# Azure CLI is available (same convention as scopes-static-files' do_tofu): if
-# mise doesn't have it, install it globally; then put it on PATH so this login
-# and the store/retrieve/delete steps — which inherit setup's exported env —
-# can call `az`. setup always runs first, so doing it here is enough.
+# Azure CLI is available, then put it on PATH so this login and the
+# store/retrieve/delete steps (which inherit setup's exported env) can call `az`.
+# setup always runs first, so doing it here is enough.
+#
+# az is a Python CLI, installed via mise's pipx backend (from PyPI). The backend
+# is pinned explicitly because the version-default for `azure-cli` on older mise
+# is an asdf plugin that clones from GitHub and proved unreliable. Force classic
+# pipx over uv (MISE_PIPX_UVX=false): uv's resolver rejects az's pinned
+# pre-release dependencies, while pipx/pip installs them fine. Requires python
+# on the agent.
 if ! command -v az >/dev/null 2>&1 && command -v mise >/dev/null 2>&1; then
   if ! mise which az >/dev/null 2>&1; then
-    mise use --global --yes azure-cli
+    mise use --global --yes pipx@latest
+    MISE_PIPX_UVX=false mise use --global --yes pipx:azure-cli
   fi
   az_bin=$(mise which az 2>/dev/null || true)
   if [ -n "$az_bin" ]; then

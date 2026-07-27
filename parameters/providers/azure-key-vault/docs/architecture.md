@@ -93,6 +93,12 @@ existing session (managed identity or a prior `az login`). The secret is briefly
 visible on the `az login` process's argv — see
 [`azure-rbac.md`](./azure-rbac.md#security-notes).
 
+The Azure CLI (`az`) is not assumed to be on the base PATH. When it isn't, `setup`
+installs it through **mise** via the pipx backend (`pipx:azure-cli`, forcing
+classic pipx over uv) and prepends it to the exported PATH so the later steps
+inherit it. This requires the agent to have `mise` and `python`, and egress to
+PyPI.
+
 The service principal needs the `Key Vault Secrets Officer` RBAC role on the vault
 — see [`azure-rbac.md`](./azure-rbac.md). The `specs/requirements/` module can
 assign that role to an existing service principal (and optionally create the
