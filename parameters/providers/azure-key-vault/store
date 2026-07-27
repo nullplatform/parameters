@@ -21,13 +21,16 @@ build_external_id
 AKV_SUFFIX=$(echo "$EXTERNAL_ID" | tr '/=' '--')
 SECRET_NAME="${AZ_SECRET_PREFIX}${AKV_SUFFIX}"
 
+err_file=$(mktemp)
 if ! AKV_ID=$(az keyvault secret set \
         --vault-name "$AZ_VAULT_NAME" \
         --name "$SECRET_NAME" \
         --value "$PARAMETER_VALUE" \
         --tags "managed_by=nullplatform" \
         --query id \
-        --output tsv 2>/dev/null); then
+        --output tsv 2>"$err_file"); then
+  err=$(cat "$err_file")
+  rm -f "$err_file"
   log error "❌ Failed to store secret in Azure Key Vault '$AZ_VAULT_NAME'"
   log error ""
   log error "💡 Possible causes:"
@@ -38,8 +41,10 @@ if ! AKV_ID=$(az keyvault secret set \
   log error "🔧 How to fix:"
   log error "   • Verify identity: az account show"
   log error "   • Check access policy: az keyvault show --name $AZ_VAULT_NAME --query properties.accessPolicies"
+  log error "Underlying error: $err"
   exit 1
 fi
+rm -f "$err_file"
 
 # AKV id URL format: https://<vault>.vault.azure.net/secrets/<name>/<version>
 # The last path component is the version id (hex string).

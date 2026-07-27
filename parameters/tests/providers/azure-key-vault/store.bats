@@ -19,7 +19,10 @@ setup() {
   cat > "$BATS_TEST_TMPDIR/bin/az" << EOF
 #!/bin/bash
 echo "ARGS: \$@" >> "$AZ_LOG"
-if [ "\${MOCK_AZ_EXIT:-0}" -ne 0 ]; then exit \$MOCK_AZ_EXIT; fi
+if [ "\${MOCK_AZ_EXIT:-0}" -ne 0 ]; then
+  echo "ERROR: (Forbidden) Caller is not authorized to perform action 'set' on the secret." >&2
+  exit \$MOCK_AZ_EXIT
+fi
 echo "https://my-vault.vault.azure.net/secrets/some-name/abc123"
 EOF
   chmod +x "$BATS_TEST_TMPDIR/bin/az"
@@ -101,4 +104,6 @@ EOF
 
   [ "$status" -ne 0 ]
   assert_contains "$output" "❌ Failed to store secret in Azure Key Vault"
+  # The real Azure error must be surfaced, not swallowed.
+  assert_contains "$output" "Underlying error: ERROR: (Forbidden) Caller is not authorized"
 }

@@ -22,7 +22,12 @@ setup() {
 echo "az $*" >> "$AZ_LOG"
 case "$1" in
   account) exit "${MOCK_AZ_ACCOUNT_SHOW_EXIT:-0}" ;;
-  login)   exit "${MOCK_AZ_LOGIN_EXIT:-0}" ;;
+  login)
+    if [ "${MOCK_AZ_LOGIN_EXIT:-0}" -ne 0 ]; then
+      echo "AADSTS7000215: Invalid client secret provided." >&2
+    fi
+    exit "${MOCK_AZ_LOGIN_EXIT:-0}"
+    ;;
 esac
 exit 0
 EOF
@@ -131,4 +136,6 @@ teardown() {
   [ "$status" -ne 0 ]
   assert_contains "$output" "❌ Azure service principal login failed"
   assert_contains "$output" "🔧 How to fix:"
+  # The real Azure error must be surfaced, not swallowed.
+  assert_contains "$output" "Underlying error: AADSTS7000215: Invalid client secret provided."
 }

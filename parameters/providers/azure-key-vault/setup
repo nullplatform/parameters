@@ -44,11 +44,20 @@ fi
 # docs/azure-rbac.md.
 if [ -n "${AZURE_CLIENT_ID:-}" ] && [ -n "${AZURE_CLIENT_SECRET:-}" ] && [ -n "${AZURE_TENANT_ID:-}" ]; then
   if ! az account show >/dev/null 2>&1; then
-    if ! az login --service-principal \
-          --username "$AZURE_CLIENT_ID" \
-          --password "$AZURE_CLIENT_SECRET" \
-          --tenant "$AZURE_TENANT_ID" \
-          --allow-no-subscriptions >/dev/null 2>&1; then
+    # Capture the az CLI's stderr so the real Azure error (e.g. an AADSTS code)
+    # surfaces in logs — do not discard it. Its own stdout (the subscription
+    # JSON) is dropped to keep setup quiet on success. The AADSTS error text does
+    # not contain the client secret.
+    err_file=$(mktemp)
+    if az login --service-principal \
+        --username "$AZURE_CLIENT_ID" \
+        --password "$AZURE_CLIENT_SECRET" \
+        --tenant "$AZURE_TENANT_ID" \
+        --allow-no-subscriptions >/dev/null 2>"$err_file"; then
+      rm -f "$err_file"
+    else
+      err=$(cat "$err_file")
+      rm -f "$err_file"
       log error "❌ Azure service principal login failed"
       log error ""
       log error "💡 Possible causes:"
@@ -58,6 +67,7 @@ if [ -n "${AZURE_CLIENT_ID:-}" ] && [ -n "${AZURE_CLIENT_SECRET:-}" ] && [ -n "$
       log error "🔧 How to fix:"
       log error "   • Verify the credentials passed to the agent (AZURE_CLIENT_ID / AZURE_CLIENT_SECRET / AZURE_TENANT_ID)"
       log error "   • Confirm the service principal has the Key Vault Secrets Officer role on the vault"
+      log error "Underlying error: $err"
       exit 1
     fi
   fi
