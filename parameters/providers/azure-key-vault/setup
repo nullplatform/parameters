@@ -7,12 +7,10 @@ set -euo pipefail
 # all platform secrets in this vault. Only the vault name is operator-configurable.
 #
 # Auth comes from the Azure CLI's credential chain (managed identity, prior
-# `az login`). Under AKS Workload Identity the pod receives a projected
-# ServiceAccount token at AZURE_FEDERATED_TOKEN_FILE (plus AZURE_CLIENT_ID /
-# AZURE_TENANT_ID); this script exchanges it for an Azure session with
-# `az login --federated-token`. No long-lived client secret is involved (no
-# rotation, nothing in tofu state) — see the login block below for the
-# residual argv-exposure caveat on the short-lived federated token itself.
+# `az login`). When service-principal env vars (AZURE_CLIENT_ID / AZURE_CLIENT_SECRET
+# / AZURE_TENANT_ID) are present, this script performs an explicit
+# `az login --service-principal` because the az CLI — unlike the Azure SDKs —
+# does not read them automatically.
 #
 # Exports: AZ_VAULT_NAME, AZ_SECRET_PREFIX
 
@@ -35,39 +33,31 @@ if [ -z "$AZ_VAULT_NAME" ]; then
   exit 1
 fi
 
-# Workload-identity login (optional; see the header note above). Skipped when a
-# session already exists (managed identity via IMDS or a prior `az login`).
+# Service-principal login (optional; see the header note above). Skipped when a
+# session already exists (managed identity or a prior `az login`).
 #
-# This is secret-less in the sense that matters for tofu state and rotation:
-# unlike the old service-principal --password, nothing here expires, needs
-# rotating, or is ever written to state. The old `--password` service-principal
-# login is fully removed. That said, the federated token itself IS bearer
-# credential material for its (short) validity window: az CLI has no
-# --federated-token-file / file-reference option, so — exactly like the old
-# --password — it must go on argv here and is briefly visible in this
-# process's entry in the process table (ps, /proc/<pid>/cmdline) to anything
-# else with visibility into the pod's PID namespace. This is an accepted,
-# unavoidable limitation of the az CLI (Microsoft's own docs use the same
-# pattern); do not add `set -x` or any command tracing around this call, and
-# do not run this container with a shared PID namespace. See docs/azure-rbac.md.
-if [ -n "${AZURE_FEDERATED_TOKEN_FILE:-}" ] && [ -n "${AZURE_CLIENT_ID:-}" ] && [ -n "${AZURE_TENANT_ID:-}" ]; then
+# The secret must go on argv: `az` requires --password for non-interactive
+# service-principal login (it does not read it from stdin — it errors "specify
+# both username and password in non-interactive mode"), so it is briefly visible
+# in the process table to co-located principals. For stronger isolation prefer
+# certificate-based SP auth, or run the agent in a single-tenant process. See
+# docs/azure-rbac.md.
+if [ -n "${AZURE_CLIENT_ID:-}" ] && [ -n "${AZURE_CLIENT_SECRET:-}" ] && [ -n "${AZURE_TENANT_ID:-}" ]; then
   if ! az account show >/dev/null 2>&1; then
     if ! az login --service-principal \
           --username "$AZURE_CLIENT_ID" \
+          --password "$AZURE_CLIENT_SECRET" \
           --tenant "$AZURE_TENANT_ID" \
-          --federated-token "$(cat "$AZURE_FEDERATED_TOKEN_FILE")" \
           --allow-no-subscriptions >/dev/null 2>&1; then
-      log error "❌ Azure workload-identity login failed"
+      log error "❌ Azure service principal login failed"
       log error ""
       log error "💡 Possible causes:"
-      log error "   • AZURE_CLIENT_ID / AZURE_TENANT_ID do not match the managed identity"
-      log error "   • The federated credential subject does not match this pod's ServiceAccount"
-      log error "   • The ServiceAccount is missing the azure.workload.identity/client-id annotation"
+      log error "   • AZURE_CLIENT_ID / AZURE_CLIENT_SECRET / AZURE_TENANT_ID are wrong or expired"
+      log error "   • The service principal was deleted or its secret was rotated"
       log error ""
       log error "🔧 How to fix:"
-      log error "   • Verify client_id / tenant_id from the specs/requirements outputs"
-      log error "   • Confirm the federated credential subject is system:serviceaccount:<ns>:<sa>"
-      log error "   • Ensure the pod is labeled azure.workload.identity/use: \"true\""
+      log error "   • Verify the credentials passed to the agent (AZURE_CLIENT_ID / AZURE_CLIENT_SECRET / AZURE_TENANT_ID)"
+      log error "   • Confirm the service principal has the Key Vault Secrets Officer role on the vault"
       exit 1
     fi
   fi

@@ -9,13 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Add support to manage (store, retrieve and delete) parameters from Azure Key Vault.
-- Add the Azure Key Vault install tofu module (`specs/install/`) built on the shared parameter-storage modules, plus a `specs/requirements/` module that provisions a user-assigned managed identity (AKS Workload Identity) and grants it the Key Vault Secrets Officer RBAC role.
-- Azure Key Vault `setup` now authenticates the Azure CLI via an AKS workload-identity federated token when `AZURE_FEDERATED_TOKEN_FILE` / `AZURE_CLIENT_ID` / `AZURE_TENANT_ID` are set.
-- The Azure Key Vault `specs/requirements/` module can optionally create the Key Vault itself (`key_vault.enable`) with the RBAC authorization model and hardened defaults; it is an independent toggle from the managed identity, and when both are enabled the vault is scoped to the identity automatically.
-
-### Changed
-
-- Migrate the Azure Key Vault `specs/requirements/` identity from a service principal + client secret to an AKS Workload Identity (user-assigned managed identity federated to the agent's Kubernetes ServiceAccount), removing the expiring secret and the secret in tofu state.
+- Add the Azure Key Vault install tofu module (`specs/install/`) built on the shared parameter-storage modules, plus a `specs/requirements/` module that assigns the Key Vault Secrets Officer RBAC role to an existing Azure AD service principal (bring-your-own; the client secret is never handled by tofu) and can optionally create the Key Vault itself (`key_vault.enable`, an independent toggle) with the RBAC authorization model and hardened defaults.
+- Azure Key Vault `setup` authenticates the Azure CLI with a service principal when `AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET` / `AZURE_TENANT_ID` are set.
 
 ### Fixed
 

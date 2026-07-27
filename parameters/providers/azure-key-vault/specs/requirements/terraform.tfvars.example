@@ -11,24 +11,19 @@ key_vault = {
   # soft_delete_retention_days    = 90          # default
   # public_network_access_enabled = true        # set false for private-endpoint-only access
   # network_acls = {
-  #   default_action = "Deny"
-  #   bypass         = "AzureServices"
-  #   ip_rules       = ["203.0.113.0/24"]
+  #   # default_action defaults to "Deny" — ip_rules act as an allow-list
+  #   ip_rules = ["203.0.113.0/24"]
   # }
 }
 
-# Create the managed identity federated to the agent's Kubernetes ServiceAccount.
-# When both blocks are enabled, the vault created above is added to this
-# identity's RBAC scope automatically; key_vault_ids is only for additional,
-# pre-existing vaults.
-workload_identity = {
-  enable                    = true
-  name                      = "nullplatform-agent-azure-key-vault"
-  resource_group_name       = "acme-prod"
-  location                  = "eastus"
-  oidc_issuer_url           = "https://eastus.oic.prod-aks.azure.com/00000000-0000-0000-0000-000000000000/11111111-1111-1111-1111-111111111111/"
-  service_account_namespace = "nullplatform"
-  service_account_name      = "nullplatform-agent"
+# Grant the client's EXISTING service principal access to the vault. This module
+# only assigns the role — it does not create the SP or touch its secret. When
+# both blocks are enabled, the vault created above is scoped to this SP
+# automatically; key_vault_ids is only for additional, pre-existing vaults.
+# The SP's client_id / client_secret / tenant_id go to the agent directly.
+service_principal = {
+  enable    = true
+  client_id = "00000000-0000-0000-0000-000000000000" # existing SP application (client) id
   # key_vault_ids = [
   #   "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/acme-prod/providers/Microsoft.KeyVault/vaults/other-existing-kv",
   # ]

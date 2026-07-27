@@ -1,10 +1,10 @@
 ################################################################################
-# Optional: user-assigned managed identity federated to the agent's Kubernetes
-# ServiceAccount (AKS Workload Identity), granted Key Vault access via Azure
-# RBAC. Toggle with var.workload_identity.enable. Secret-less: Azure injects and
-# rotates short-lived tokens in the agent pod. Outputs the client_id / tenant_id
-# so operators can annotate the ServiceAccount and wire AZURE_TENANT_ID.
+# Optionally grant an existing Azure AD service principal Key Vault access via
+# Azure RBAC, and/or create the Key Vault itself. Toggled independently by
+# var.service_principal.enable and var.key_vault.enable. This module does NOT
+# create the service principal or handle its client secret — the secret is wired
+# into the agent environment directly and never passes through tofu state.
 ################################################################################
 
-# Tenant tofu authenticates against (the managed identity lives in this tenant).
+# Tenant tofu authenticates against (wired into the agent as AZURE_TENANT_ID).
 data "azurerm_client_config" "current" {}
