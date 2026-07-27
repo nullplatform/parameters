@@ -33,11 +33,15 @@ if [ -z "$AZ_VAULT_NAME" ]; then
   exit 1
 fi
 
-# The agent runtime may provide the Azure CLI through mise rather than on the
-# base PATH. Resolve `az` here and export the adjusted PATH so both this login
-# and the store/retrieve/delete steps (which inherit setup's environment) find
-# the binary. setup always runs first, so fixing it here is enough.
+# The agent runtime manages CLIs through mise, not on the base PATH. Ensure the
+# Azure CLI is available (same convention as scopes-static-files' do_tofu): if
+# mise doesn't have it, install it globally; then put it on PATH so this login
+# and the store/retrieve/delete steps — which inherit setup's exported env —
+# can call `az`. setup always runs first, so doing it here is enough.
 if ! command -v az >/dev/null 2>&1 && command -v mise >/dev/null 2>&1; then
+  if ! mise which az >/dev/null 2>&1; then
+    mise use --global --yes azure-cli
+  fi
   az_bin=$(mise which az 2>/dev/null || true)
   if [ -n "$az_bin" ]; then
     az_dir=$(dirname "$az_bin")
