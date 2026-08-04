@@ -1,7 +1,7 @@
 locals {
   iam_enabled    = var.iam_role.enable
   aws_account_id = local.iam_enabled ? data.aws_caller_identity.current[0].account_id : ""
-  aws_region     = local.iam_enabled ? data.aws_region.current[0].name : ""
+  aws_region     = local.iam_enabled ? data.aws_region.current[0].region : ""
 
   trusted_principals = (
     length(var.iam_role.trusted_principals) > 0 ?
